@@ -3,6 +3,7 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/core/eigen.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <cstdlib>
 
 class GlobalMap{
 public:
@@ -10,14 +11,18 @@ public:
   Eigen::MatrixXd get_global_map();
   Eigen::MatrixXd binarize_map(Eigen::MatrixXd img_e);
   void export_map_image(Eigen::MatrixXd img_e);
-  
+
+private:
+  std::string homepath;
 };
 
-GlobalMap::GlobalMap(){};
+GlobalMap::GlobalMap(){
+  homepath = std::getenv("HOME");
+}
 
 Eigen::MatrixXd GlobalMap::get_global_map(){
   // 地図の読み込み
-  cv::Mat img = cv::imread("../map/map.pgm", 0);
+  cv::Mat img = cv::imread(homepath + "/catkin_ws/src/easy_mcl/map/map.pgm", 0);
   if(img.empty()){
     ROS_INFO("unable to open the map");
   }else{
@@ -60,7 +65,6 @@ void GlobalMap::export_map_image(Eigen::MatrixXd img_e){
 int main(int argc, char** argv){
 
   GlobalMap *gm;
-
   gm = new GlobalMap();
 
   Eigen::MatrixXd img_e = gm->get_global_map();
