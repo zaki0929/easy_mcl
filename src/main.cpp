@@ -5,6 +5,7 @@
 #include <opencv2/core/eigen.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <cstdlib>
+#include <cmath>
 
 class GlobalMap{
 public:
@@ -113,10 +114,10 @@ Eigen::MatrixXd LocalMap::get_local_map(){
 
   for(double th=scan->angle_min, i=0; th<=scan->angle_max; th+=scan->angle_increment, i++){
     if(scan->ranges[i] > 0){
-      int x = int(scan->ranges[i]*std::cos(th)/0.05);
-      int y = int(scan->ranges[i]*std::sin(th)/0.05);
+      int x = int(scan->ranges[i]*std::cos(th+M_PI_2)/0.05);
+      int y = int(scan->ranges[i]*std::sin(th+M_PI_2)/0.05);
 
-      img_e(int(size/2)-x, int(size/2)-y) = 0;
+      img_e(int(size/2)-y, int(size/2)+x) = 0;
     }
   }
   
