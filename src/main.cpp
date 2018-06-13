@@ -28,7 +28,7 @@ public:
   void scanCallback(const sensor_msgs::LaserScan::ConstPtr& msg);
   sensor_msgs::LaserScan::ConstPtr scan;
   const int size;
-  int toggle;
+  int scan_toggle;
 
 private:
   std::string homepath;
@@ -70,7 +70,7 @@ Eigen::MatrixXd GlobalMap::binarize_map(Eigen::MatrixXd img_e){
         img_e(j, i) = 255;
       }
       else{
-        img_e(i, j) = 0;
+        img_e(j, i) = 0;
       }
     }
   }
@@ -88,7 +88,7 @@ void GlobalMap::export_map_image(Eigen::MatrixXd img_e){
 }
 
 LocalMap::LocalMap(ros::NodeHandle& nh) : size(240){    // 240 x 240 
-  toggle = 0;
+  scan_toggle = 0;
   homepath = std::getenv("HOME");
   scan_sub = nh.subscribe("scan", 1000, &LocalMap::scanCallback, this);
 }
@@ -98,38 +98,29 @@ LocalMap::~LocalMap(){
 }
 
 void LocalMap::scanCallback(const sensor_msgs::LaserScan::ConstPtr& msg){
-  toggle = 1;
-  ROS_INFO("local_map: get data from scan topic");
+  if(scan_toggle){
+    //ROS_INFO("local_map: get data from scan topic");
+  }else{
+    scan_toggle = 1;
+  }
   scan = msg;
 }
 
-inline double null_check(double target){
-  if(!(target > 0)){
-      target = 5.6;
-  }
-  return target;
-}
-
 Eigen::MatrixXd LocalMap::get_local_map(){
-  
-  double center = null_check(scan->ranges[(-scan->angle_min)/scan->angle_increment]); 
-  ROS_INFO("local map: %lf", center); 
-  
-  int center_cell = int(center/0.05);
-
+  // 全ての要素の値が255でローカルマップサイズの行列を取得
   Eigen::MatrixXd img_e = Eigen::MatrixXd::Ones(size, size); 
-  
   img_e *= 255;
 
-  for(int i=0; i<img_e.rows(); i++){
-    for(int j=0; j<img_e.cols(); j++){
-      if(j == center_cell + int(size/2)){
-        img_e(j, i) = 0;
-      }
+  for(double th=scan->angle_min, i=0; th<=scan->angle_max; th+=scan->angle_increment, i++){
+    if(scan->ranges[i] > 0){
+      int x = int(scan->ranges[i]*std::cos(th)/0.05);
+      int y = int(scan->ranges[i]*std::sin(th)/0.05);
+
+      img_e(int(size/2)-x, int(size/2)-y) = 0;
     }
   }
   
-  ROS_INFO("global map: completed writing map");
+  ROS_INFO("local map: completed writing map");
   return img_e;
 }
 
@@ -145,13 +136,13 @@ void LocalMap::export_map_image(Eigen::MatrixXd img_e){
 int main(int argc, char** argv){
   ros::init(argc, argv, "easy_mcl");
   ros::NodeHandle nh;
-  ros::Rate rate(1);
+  ros::Rate rate(0.5);
 
   GlobalMap *gm = new GlobalMap();
   LocalMap *lm = new LocalMap(nh);
   while(ros::ok()){
 
-    if(lm->toggle){
+    if(lm->scan_toggle){
       // 地図データの読み込み
       Eigen::MatrixXd global_map = gm->get_global_map();
       Eigen::MatrixXd local_map = lm->get_local_map();
@@ -159,9 +150,10 @@ int main(int argc, char** argv){
       // 地図の書き出し
       gm->export_map_image(global_map);
       lm->export_map_image(local_map);
+    }else{
+      ROS_INFO("waiting scan topic...");
     }
 
-    ROS_INFO("gu-ru guru");
     ros::spinOnce();
     rate.sleep();
   }
