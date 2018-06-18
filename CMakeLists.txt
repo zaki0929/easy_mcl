@@ -6,6 +6,7 @@ project(easy_mcl)
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   sensor_msgs
+  nav_msgs
   std_msgs
 )
 
@@ -22,7 +23,7 @@ COMPONENTS
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES easy_mcl
-  CATKIN_DEPENDS roscpp sensor_msgs std_msgs
+  CATKIN_DEPENDS roscpp sensor_msgs nav_msgs std_msgs
   DEPENDS eigen opencv3
 )
 

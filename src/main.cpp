@@ -1,11 +1,18 @@
 #include <ros/ros.h>
-#include "sensor_msgs/LaserScan.h"
+#include <sensor_msgs/LaserScan.h>
+#include <nav_msgs/Odometry.h>
 #include <Eigen/Dense>
 #include <opencv2/core/core.hpp>
 #include <opencv2/core/eigen.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <cstdlib>
 #include <cmath>
+
+struct Position{
+  double x;
+  double y;
+  double th;
+};
 
 class GlobalMap{
 public:
@@ -23,17 +30,45 @@ class LocalMap{
 public:
   LocalMap(ros::NodeHandle& nh);
   ~LocalMap();
-  Eigen::MatrixXd get_local_map();
-  void export_map_image(Eigen::MatrixXd img_e);
   ros::Subscriber scan_sub;
-  void scanCallback(const sensor_msgs::LaserScan::ConstPtr& msg);
   sensor_msgs::LaserScan::ConstPtr scan;
+  Eigen::MatrixXd get_local_map();
+  void scanCallback(const sensor_msgs::LaserScan::ConstPtr& msg);
+  void export_map_image(Eigen::MatrixXd img_e);
   const int size;
   int scan_toggle;
 
 private:
   std::string homepath;
 };
+
+class Particle{
+public:
+  Particle(ros::NodeHandle& nh);
+  ~Particle();
+  ros::Subscriber odom_sub;
+  nav_msgs::Odometry::ConstPtr odom;
+  Eigen::MatrixXd get_path();
+  void scanCallback(const nav_msgs::Odometry::ConstPtr& msg);
+  void export_map_image(Eigen::MatrixXd img_e);
+  double weight;
+  int odom_toggle;
+  int size_x;
+  int size_y;
+
+private:
+  std::string homepath;
+  Eigen::MatrixXd path_map;
+};
+
+inline Eigen::Vector3d set_pose(double x, double y, double th){
+  Eigen::Vector3d vec;
+  vec(0) = x;
+  vec(1) = y;
+  vec(2) = th;
+  return vec;
+}
+//----------------------------------------------------------------------
 
 GlobalMap::GlobalMap(){
   homepath = std::getenv("HOME");
@@ -88,6 +123,8 @@ void GlobalMap::export_map_image(Eigen::MatrixXd img_e){
   ROS_INFO("global map: map exported");
 }
 
+//----------------------------------------------------------------------
+
 LocalMap::LocalMap(ros::NodeHandle& nh) : size(240){    // 240 x 240 
   scan_toggle = 0;
   homepath = std::getenv("HOME");
@@ -100,7 +137,7 @@ LocalMap::~LocalMap(){
 
 void LocalMap::scanCallback(const sensor_msgs::LaserScan::ConstPtr& msg){
   if(scan_toggle){
-    //ROS_INFO("local_map: get data from scan topic");
+    //ROS_INFO("local map: get data from scan topic");
   }else{
     scan_toggle = 1;
   }
@@ -134,6 +171,69 @@ void LocalMap::export_map_image(Eigen::MatrixXd img_e){
   ROS_INFO("local map: map exported");
 }
 
+//----------------------------------------------------------------------
+
+Particle::Particle(ros::NodeHandle& nh){
+  homepath = std::getenv("HOME");
+
+  // 地図の読み込み
+  cv::Mat img = cv::imread(homepath + "/catkin_ws/src/easy_mcl/map/map.pgm", 0);
+  if(img.empty()){
+    ROS_ERROR("particle: unable to open the map");
+  }else{
+    ROS_INFO("particle: map loaded");
+  }
+  size_x = img.rows;
+  size_y = img.cols;
+  ROS_INFO("x: %d, y: %d", size_x, size_y);
+
+
+  odom_toggle = 0;
+  odom_sub = nh.subscribe("odom", 1000, &Particle::scanCallback, this);
+
+  weight = 0;
+
+  // 軌跡をまっさらにする
+  path_map = Eigen::MatrixXd::Ones(size_y, size_x); 
+  path_map *= 255;
+}
+
+Particle::~Particle(){
+  ROS_INFO("particle: successfully released memory");
+}
+
+void Particle::scanCallback(const nav_msgs::Odometry::ConstPtr& msg){
+  if(odom_toggle){
+    //ROS_INFO("particle: get data from odom topic");
+  }else{
+    odom_toggle = 1;
+  }
+  odom = msg;
+}
+
+Eigen::MatrixXd Particle::get_path(){
+  Eigen::Vector3d odom_pos = set_pose(odom->pose.pose.position.x, odom->pose.pose.position.y, 0.0); 
+  int x = odom_pos(0)/0.05;
+  int y = odom_pos(1)/0.05;
+
+  ROS_INFO("x: %d, y: %d", int(x), int(y));
+
+  path_map(int(size_y/2)-y, int(size_x/2)+x) = 0;
+
+  return path_map;
+}
+
+void Particle::export_map_image(Eigen::MatrixXd img_e){
+  // 地図データをEigenからOpenCVに渡し、出力
+  cv::Mat img;
+  cv::eigen2cv(img_e, img);
+  ROS_INFO("particle: eigen -> opencv");
+  cv::imwrite(homepath + "/catkin_ws/src/easy_mcl/map/path_map.pgm", img);
+  ROS_INFO("particle: map exported");
+}
+
+//----------------------------------------------------------------------
+
 int main(int argc, char** argv){
   ros::init(argc, argv, "easy_mcl");
   ros::NodeHandle nh;
@@ -141,6 +241,8 @@ int main(int argc, char** argv){
 
   GlobalMap *gm = new GlobalMap();
   LocalMap *lm = new LocalMap(nh);
+  Particle *p = new Particle(nh);
+
   while(ros::ok()){
 
     if(lm->scan_toggle){
@@ -155,12 +257,20 @@ int main(int argc, char** argv){
       ROS_INFO("waiting scan topic...");
     }
 
+    if(p->odom_toggle){
+      Eigen::MatrixXd path_map = p->get_path();
+      p->export_map_image(path_map);
+    }else{
+      ROS_INFO("waiting odom topic...");
+    }
+
     ros::spinOnce();
     rate.sleep();
   }
     
   delete gm;
   delete lm;
+  delete p;
 
   return 0;
 }
