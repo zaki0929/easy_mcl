@@ -1,18 +1,14 @@
 #include <ros/ros.h>
 #include <sensor_msgs/LaserScan.h>
 #include <nav_msgs/Odometry.h>
+#include <geometry_msgs/PoseArray.h>
+#include <tf/transform_datatypes.h>
 #include <Eigen/Dense>
 #include <opencv2/core/core.hpp>
 #include <opencv2/core/eigen.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <cstdlib>
 #include <cmath>
-
-struct Position{
-  double x;
-  double y;
-  double th;
-};
 
 class GlobalMap{
 public:
@@ -44,22 +40,31 @@ private:
 
 class Particle{
 public:
-  Particle(ros::NodeHandle& nh);
+  Particle(ros::NodeHandle& nh, double x, double y);
   ~Particle();
   ros::Subscriber odom_sub;
+  ros::Publisher pose_pub;
   nav_msgs::Odometry::ConstPtr odom;
-  Eigen::MatrixXd get_path();
+  Eigen::Vector3d get_odom_pose();
+  Eigen::Vector3d get_pose();
+  Eigen::MatrixXd get_path_map();
   void scanCallback(const nav_msgs::Odometry::ConstPtr& msg);
+  void publish_particle_cloud(Eigen::Vector3d pose);
   void export_map_image(Eigen::MatrixXd img_e);
   double weight;
   int odom_toggle;
   int size_x;
   int size_y;
+  Eigen::Vector3d pose;
+  Eigen::Vector3d pose_diff;
+  Eigen::Vector3d pose_temp;
 
 private:
   std::string homepath;
   Eigen::MatrixXd path_map;
 };
+
+//----------------------------------------------------------------------
 
 inline Eigen::Vector3d set_pose(double x, double y, double th){
   Eigen::Vector3d vec;
@@ -68,6 +73,7 @@ inline Eigen::Vector3d set_pose(double x, double y, double th){
   vec(2) = th;
   return vec;
 }
+
 //----------------------------------------------------------------------
 
 GlobalMap::GlobalMap(){
@@ -173,10 +179,17 @@ void LocalMap::export_map_image(Eigen::MatrixXd img_e){
 
 //----------------------------------------------------------------------
 
-Particle::Particle(ros::NodeHandle& nh){
+Particle::Particle(ros::NodeHandle& nh, double x, double y){
+  // 初期化
+  pose = set_pose(x, y, 0);
+  pose_temp = set_pose(x, y, 0);
+  weight = 0;
+  odom_toggle = 0;
   homepath = std::getenv("HOME");
+  odom_sub = nh.subscribe("odom", 1000, &Particle::scanCallback, this);
+  pose_pub = nh.advertise<geometry_msgs::PoseArray>("ParticleCloud", 10);
 
-  // 地図の読み込み
+  // 地図の読み込んでサイズを取得
   cv::Mat img = cv::imread(homepath + "/catkin_ws/src/easy_mcl/map/map.pgm", 0);
   if(img.empty()){
     ROS_ERROR("particle: unable to open the map");
@@ -188,10 +201,6 @@ Particle::Particle(ros::NodeHandle& nh){
   ROS_INFO("x: %d, y: %d", size_x, size_y);
 
 
-  odom_toggle = 0;
-  odom_sub = nh.subscribe("odom", 1000, &Particle::scanCallback, this);
-
-  weight = 0;
 
   // 軌跡をまっさらにする
   path_map = Eigen::MatrixXd::Ones(size_y, size_x); 
@@ -211,14 +220,64 @@ void Particle::scanCallback(const nav_msgs::Odometry::ConstPtr& msg){
   odom = msg;
 }
 
-Eigen::MatrixXd Particle::get_path(){
-  Eigen::Vector3d odom_pos = set_pose(odom->pose.pose.position.x, odom->pose.pose.position.y, 0.0); 
-  int x = odom_pos(0)/0.05;
-  int y = odom_pos(1)/0.05;
+Eigen::Vector3d Particle::get_odom_pose(){
+  tf::Quaternion q(odom->pose.pose.orientation.x, odom->pose.pose.orientation.y, odom->pose.pose.orientation.z, odom->pose.pose.orientation.w);
 
-  ROS_INFO("x: %d, y: %d", int(x), int(y));
+  double roll, pitch, yaw;
+  tf::Matrix3x3(q).getRPY(roll, pitch, yaw);
 
-  path_map(int(size_y/2)-y, int(size_x/2)+x) = 0;
+  Eigen::Vector3d odom_pose = set_pose(odom->pose.pose.position.x, odom->pose.pose.position.y, yaw); 
+  return odom_pose;
+} 
+
+Eigen::Vector3d Particle::get_pose(){
+  Eigen::Vector3d odom_pose = get_odom_pose(); 
+
+  pose_diff = odom_pose - pose_temp;
+  pose += pose_diff;
+
+  pose_temp = pose;
+
+  return pose;
+}
+
+void Particle::publish_particle_cloud(Eigen::Vector3d pose){
+  geometry_msgs::PoseArray pose_array;
+
+  tf::Quaternion q = tf::createQuaternionFromRPY(0, 0, pose(2));
+
+  pose_array.header.stamp = ros::Time::now();
+  pose_array.header.frame_id = "map";
+  pose_array.poses.resize(1);            // パーティクル数
+
+  pose_array.poses[0].position.x = pose(0); 
+  pose_array.poses[0].position.y = pose(1);
+  pose_array.poses[0].position.z = 0;
+
+  pose_array.poses[0].orientation.x = q.x();
+  pose_array.poses[0].orientation.y = q.y();
+  pose_array.poses[0].orientation.z = q.z();
+  pose_array.poses[0].orientation.w = q.w();
+
+  pose_pub.publish(pose_array);
+}
+
+Eigen::MatrixXd Particle::get_path_map(){
+  Eigen::Vector3d odom_pose = get_odom_pose(); 
+
+  // 解像度に縮尺を合わせる
+  int odom_x = odom_pose(0)/0.05;
+  int odom_y = odom_pose(1)/0.05;
+
+  ROS_INFO("x: %d, y: %d, th: %lf", int(odom_x), int(odom_y), odom_pose(2));
+  
+  // 位置を描画
+  path_map(int(size_y/2)-odom_y, int(size_x/2)+odom_x) = 0;
+
+  // 向きを描画
+  for(int i=0; i<5; i++){
+    path_map(int(size_y/2)-odom_y-int(std::cos(odom_pose(2))*2*(i+1)), int(size_x/2)+odom_x+int(std::sin(odom_pose(2))*2*(i+1))) = 240-(20*i);
+  }
 
   return path_map;
 }
@@ -237,29 +296,37 @@ void Particle::export_map_image(Eigen::MatrixXd img_e){
 int main(int argc, char** argv){
   ros::init(argc, argv, "easy_mcl");
   ros::NodeHandle nh;
-  ros::Rate rate(0.5);
+  ros::Rate rate(10);
 
   GlobalMap *gm = new GlobalMap();
   LocalMap *lm = new LocalMap(nh);
-  Particle *p = new Particle(nh);
+  Particle *p = new Particle(nh, 0, 0);
+
+  // 地図を読み込みグローバルマップを生成
+  Eigen::MatrixXd global_map = gm->get_global_map();
+
+  // グローバルマップを png 形式で出力
+  gm->export_map_image(global_map);
 
   while(ros::ok()){
 
     if(lm->scan_toggle){
-      // 地図データの読み込み
-      Eigen::MatrixXd global_map = gm->get_global_map();
+      // scan トピックからローカルマップを生成
       Eigen::MatrixXd local_map = lm->get_local_map();
 
-      // 地図の書き出し
-      gm->export_map_image(global_map);
+      // ローカルマップを png 形式で出力
       lm->export_map_image(local_map);
     }else{
       ROS_INFO("waiting scan topic...");
     }
 
     if(p->odom_toggle){
-      Eigen::MatrixXd path_map = p->get_path();
-      p->export_map_image(path_map);
+      // odom トピックから, オドメトリをプロットした地図を生成しi, png 形式で出力
+//      Eigen::MatrixXd path_map = p->get_path_map();
+//      p->export_map_image(path_map);
+
+      // odom トピックから, パーティクルの位置姿勢を計算しパブリッシュ
+      p->publish_particle_cloud(p->get_pose());
     }else{
       ROS_INFO("waiting odom topic...");
     }
