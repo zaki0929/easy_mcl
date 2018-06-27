@@ -10,6 +10,8 @@
 #include <cstdlib>
 #include <cmath>
 
+#define PARTICLE_NUM 10
+
 class GlobalMap{
 public:
   GlobalMap();
@@ -24,15 +26,13 @@ private:
 
 class LocalMap{
 public:
-  LocalMap(ros::NodeHandle& nh);
+  LocalMap();
   ~LocalMap();
-  ros::Subscriber scan_sub;
   sensor_msgs::LaserScan::ConstPtr scan;
+  void get_scan(sensor_msgs::LaserScan::ConstPtr _scan);
   Eigen::MatrixXd get_local_map();
-  void scanCallback(const sensor_msgs::LaserScan::ConstPtr& msg);
   void export_map_image(Eigen::MatrixXd img_e);
   const int size;
-  int scan_toggle;
 
 private:
   std::string homepath;
@@ -40,28 +40,42 @@ private:
 
 class Particle{
 public:
-  Particle(ros::NodeHandle& nh, double x, double y);
+  Particle(ros::NodeHandle& nh, double x, double y, double th);
+  Particle();
   ~Particle();
-  ros::Subscriber odom_sub;
-  ros::Publisher pose_pub;
   nav_msgs::Odometry::ConstPtr odom;
+  void get_odom(nav_msgs::Odometry::ConstPtr _odom);
   Eigen::Vector3d get_odom_pose();
   Eigen::Vector3d get_pose();
   Eigen::MatrixXd get_path_map();
-  void scanCallback(const nav_msgs::Odometry::ConstPtr& msg);
-  void publish_particle_cloud(Eigen::Vector3d pose);
   void export_map_image(Eigen::MatrixXd img_e);
   double weight;
-  int odom_toggle;
   int size_x;
   int size_y;
   Eigen::Vector3d pose;
-  Eigen::Vector3d pose_diff;
-  Eigen::Vector3d pose_temp;
+  Eigen::Vector3d pose_base;
+  Eigen::Vector3d initial_pose;
+  Eigen::Vector3d odom_temp;
 
 private:
   std::string homepath;
   Eigen::MatrixXd path_map;
+};
+
+class Node{
+public:
+  Node(ros::NodeHandle& nh);
+  ~Node();
+  ros::Subscriber scan_sub;
+  ros::Subscriber odom_sub;
+  ros::Publisher pose_pub;
+  sensor_msgs::LaserScan::ConstPtr scan;
+  nav_msgs::Odometry::ConstPtr odom;
+  void scanCallback(const sensor_msgs::LaserScan::ConstPtr& msg);
+  void odomCallback(const nav_msgs::Odometry::ConstPtr& msg);
+  void publish_particle_cloud(Particle p[]);
+  int scan_toggle;
+  int odom_toggle;
 };
 
 //----------------------------------------------------------------------
@@ -80,9 +94,7 @@ GlobalMap::GlobalMap(){
   homepath = std::getenv("HOME");
 }
 
-GlobalMap::~GlobalMap(){
-  ROS_INFO("global map: successfully released memory");
-}
+GlobalMap::~GlobalMap(){}
 
 Eigen::MatrixXd GlobalMap::get_global_map(){
   // 地図の読み込み
@@ -131,23 +143,14 @@ void GlobalMap::export_map_image(Eigen::MatrixXd img_e){
 
 //----------------------------------------------------------------------
 
-LocalMap::LocalMap(ros::NodeHandle& nh) : size(240){    // 240 x 240 
-  scan_toggle = 0;
+LocalMap::LocalMap() : size(240){    // 240 x 240 
   homepath = std::getenv("HOME");
-  scan_sub = nh.subscribe("scan", 1000, &LocalMap::scanCallback, this);
 }
 
-LocalMap::~LocalMap(){
-  ROS_INFO("local map: successfully released memory");
-}
+LocalMap::~LocalMap(){}
 
-void LocalMap::scanCallback(const sensor_msgs::LaserScan::ConstPtr& msg){
-  if(scan_toggle){
-    //ROS_INFO("local map: get data from scan topic");
-  }else{
-    scan_toggle = 1;
-  }
-  scan = msg;
+void LocalMap::get_scan(sensor_msgs::LaserScan::ConstPtr _scan){
+  scan = _scan;
 }
 
 Eigen::MatrixXd LocalMap::get_local_map(){
@@ -179,15 +182,14 @@ void LocalMap::export_map_image(Eigen::MatrixXd img_e){
 
 //----------------------------------------------------------------------
 
-Particle::Particle(ros::NodeHandle& nh, double x, double y){
+Particle::Particle(){
   // 初期化
-  pose = set_pose(x, y, 0);
-  pose_temp = set_pose(x, y, 0);
+  pose = set_pose(0, 0, 0);
+  pose_base = set_pose(0, 0, 0);
+  initial_pose = set_pose(0, 0, 0);
+  odom_temp = set_pose(0, 0, 0);
   weight = 0;
-  odom_toggle = 0;
   homepath = std::getenv("HOME");
-  odom_sub = nh.subscribe("odom", 1000, &Particle::scanCallback, this);
-  pose_pub = nh.advertise<geometry_msgs::PoseArray>("ParticleCloud", 10);
 
   // 地図の読み込んでサイズを取得
   cv::Mat img = cv::imread(homepath + "/catkin_ws/src/easy_mcl/map/map.pgm", 0);
@@ -200,24 +202,15 @@ Particle::Particle(ros::NodeHandle& nh, double x, double y){
   size_y = img.cols;
   ROS_INFO("x: %d, y: %d", size_x, size_y);
 
-
-
   // 軌跡をまっさらにする
   path_map = Eigen::MatrixXd::Ones(size_y, size_x); 
   path_map *= 255;
 }
 
-Particle::~Particle(){
-  ROS_INFO("particle: successfully released memory");
-}
+Particle::~Particle(){}
 
-void Particle::scanCallback(const nav_msgs::Odometry::ConstPtr& msg){
-  if(odom_toggle){
-    //ROS_INFO("particle: get data from odom topic");
-  }else{
-    odom_toggle = 1;
-  }
-  odom = msg;
+void Particle::get_odom(nav_msgs::Odometry::ConstPtr _odom){
+  odom = _odom;
 }
 
 Eigen::Vector3d Particle::get_odom_pose(){
@@ -227,39 +220,22 @@ Eigen::Vector3d Particle::get_odom_pose(){
   tf::Matrix3x3(q).getRPY(roll, pitch, yaw);
 
   Eigen::Vector3d odom_pose = set_pose(odom->pose.pose.position.x, odom->pose.pose.position.y, yaw); 
+
   return odom_pose;
 } 
 
 Eigen::Vector3d Particle::get_pose(){
   Eigen::Vector3d odom_pose = get_odom_pose(); 
+  Eigen::Vector3d odom_diff = odom_pose - odom_temp; 
+  pose_base += odom_diff;
+ 
+  pose(0) = (pose_base(0)*std::cos(initial_pose(2))) - (pose_base(1)*std::sin(initial_pose(2)));
+  pose(1) = (pose_base(0)*std::sin(initial_pose(2))) + (pose_base(1)*std::cos(initial_pose(2)));
+  pose(2) = pose_base(2);
 
-  pose_diff = odom_pose - pose_temp;
-  pose += pose_diff;
-
-  pose_temp = pose;
+  odom_temp = odom_pose;
 
   return pose;
-}
-
-void Particle::publish_particle_cloud(Eigen::Vector3d pose){
-  geometry_msgs::PoseArray pose_array;
-
-  tf::Quaternion q = tf::createQuaternionFromRPY(0, 0, pose(2));
-
-  pose_array.header.stamp = ros::Time::now();
-  pose_array.header.frame_id = "map";
-  pose_array.poses.resize(1);            // パーティクル数
-
-  pose_array.poses[0].position.x = pose(0); 
-  pose_array.poses[0].position.y = pose(1);
-  pose_array.poses[0].position.z = 0;
-
-  pose_array.poses[0].orientation.x = q.x();
-  pose_array.poses[0].orientation.y = q.y();
-  pose_array.poses[0].orientation.z = q.z();
-  pose_array.poses[0].orientation.w = q.w();
-
-  pose_pub.publish(pose_array);
 }
 
 Eigen::MatrixXd Particle::get_path_map(){
@@ -293,40 +269,109 @@ void Particle::export_map_image(Eigen::MatrixXd img_e){
 
 //----------------------------------------------------------------------
 
+Node::Node(ros::NodeHandle& nh){
+  scan_sub = nh.subscribe("scan", 1000, &Node::scanCallback, this);
+  odom_sub = nh.subscribe("odom", 1000, &Node::odomCallback, this);
+  pose_pub = nh.advertise<geometry_msgs::PoseArray>("ParticleCloud", 10);
+  scan_toggle = 0;
+  odom_toggle = 0;
+}
+
+Node::~Node(){}
+
+void Node::scanCallback(const sensor_msgs::LaserScan::ConstPtr& msg){
+  if(scan_toggle){
+    //ROS_INFO("local map: get data from scan topic");
+  }else{
+    scan_toggle = 1;
+  }
+  scan = msg;
+}
+
+void Node::odomCallback(const nav_msgs::Odometry::ConstPtr& msg){
+  if(odom_toggle){
+    //ROS_INFO("particle: get data from odom topic");
+  }else{
+    odom_toggle = 1;
+  }
+  odom = msg;
+}
+
+void Node::publish_particle_cloud(Particle p[]){
+  geometry_msgs::PoseArray pose_array;
+  
+  pose_array.header.stamp = ros::Time::now();
+  pose_array.header.frame_id = "map";
+  pose_array.poses.resize(PARTICLE_NUM);
+  
+  for(int i=0; i<PARTICLE_NUM; i++){
+    Eigen::Vector3d pose = p[i].get_pose();
+
+    // ロールピッチヨー角からクォータニオンを取得
+    tf::Quaternion q = tf::createQuaternionFromRPY(0, 0, pose(2));
+
+    pose_array.poses[i].position.x = pose(0); 
+    pose_array.poses[i].position.y = pose(1);
+    pose_array.poses[i].position.z = 0;
+  
+    pose_array.poses[i].orientation.x = q.x();
+    pose_array.poses[i].orientation.y = q.y();
+    pose_array.poses[i].orientation.z = q.z();
+    pose_array.poses[i].orientation.w = q.w();
+  }
+
+  pose_pub.publish(pose_array);
+}
+
+//----------------------------------------------------------------------
+
 int main(int argc, char** argv){
   ros::init(argc, argv, "easy_mcl");
   ros::NodeHandle nh;
   ros::Rate rate(10);
 
-  GlobalMap *gm = new GlobalMap();
-  LocalMap *lm = new LocalMap(nh);
-  Particle *p = new Particle(nh, 0, 0);
+  Node n(nh);
+  GlobalMap gm;
+  LocalMap lm;
+  Particle p[PARTICLE_NUM];
 
-  // 地図を読み込みグローバルマップを生成
-  Eigen::MatrixXd global_map = gm->get_global_map();
+  for(int i=0; i<PARTICLE_NUM; i++){
+    p[i].pose = set_pose(0, 0, i*0.5);
+    p[i].pose_base = set_pose(0, 0, i*0.5);
+    p[i].initial_pose = set_pose(0, 0, i*0.5);
+    //p[i].pose = set_pose(i, 0, 0);
+  }
 
-  // グローバルマップを png 形式で出力
-  gm->export_map_image(global_map);
-
+//  // 地図を読み込みグローバルマップを生成
+//  Eigen::MatrixXd global_map = gm.get_global_map();
+//
+//  // グローバルマップを png 形式で出力
+//  gm.export_map_image(global_map);
+//
   while(ros::ok()){
-
-    if(lm->scan_toggle){
-      // scan トピックからローカルマップを生成
-      Eigen::MatrixXd local_map = lm->get_local_map();
-
-      // ローカルマップを png 形式で出力
-      lm->export_map_image(local_map);
-    }else{
-      ROS_INFO("waiting scan topic...");
-    }
-
-    if(p->odom_toggle){
-      // odom トピックから, オドメトリをプロットした地図を生成しi, png 形式で出力
+//
+//    if(n.scan_toggle){
+//      // scan トピックからローカルマップを生成
+//      lm.get_scan(n.scan);
+//      Eigen::MatrixXd local_map = lm.get_local_map();
+//
+//      // ローカルマップを png 形式で出力
+//      lm.export_map_image(local_map);
+//    }else{
+//      ROS_INFO("waiting scan topic...");
+//    }
+//
+    if(n.odom_toggle){
+      // odom トピックから, オドメトリをプロットした地図を生成し, png 形式で出力
 //      Eigen::MatrixXd path_map = p->get_path_map();
 //      p->export_map_image(path_map);
 
       // odom トピックから, パーティクルの位置姿勢を計算しパブリッシュ
-      p->publish_particle_cloud(p->get_pose());
+      for(int i=0; i<PARTICLE_NUM; i++){
+        p[i].get_odom(n.odom);
+      }
+      n.publish_particle_cloud(p);
+
     }else{
       ROS_INFO("waiting odom topic...");
     }
@@ -334,10 +379,6 @@ int main(int argc, char** argv){
     ros::spinOnce();
     rate.sleep();
   }
-    
-  delete gm;
-  delete lm;
-  delete p;
 
   return 0;
 }
