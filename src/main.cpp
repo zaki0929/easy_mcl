@@ -58,7 +58,7 @@ public:
   Eigen::Vector3d pose_base;
   Eigen::Vector3d pose_initial;
   Eigen::Vector3d odom_temp;
-  Eigen::MatrixXd local_map();
+  Eigen::MatrixXd local_map;
 
 private:
   std::string homepath;
@@ -92,7 +92,7 @@ inline Eigen::Vector3d set_pose(double x, double y, double th){
 }
 
 inline int check_point_within_rect(int x1, int y1, int x2, int y2, double x, double y){
-  if(x >= x1 && x <= x2 && y <= y1 && y >= y2){
+  if(x >= (double)x1 && x <= (double)x2 && y >= (double)y1 && y <= (double)y2){
     return 1;
   }else{
     return 0;
@@ -292,6 +292,7 @@ void Particle::get_local_map(Eigen::MatrixXd img_e){
       if(img_e(j, i) == 0){
         data_x.push_back(i-(size/2)+0.5);
         data_y.push_back((size/2)-j-0.5);
+        //ROS_INFO("%lf, %lf", i-(size/2)+0.5, (size/2)-j-0.5);
       }
     }
   }
@@ -300,8 +301,8 @@ void Particle::get_local_map(Eigen::MatrixXd img_e){
   std::vector<double> rotated_data_y;
 
   for(int i=0; i<data_x.size(); i++){
-    rotated_data_x.push_back((data_x*std::cos(pose(2))) - (data_y*std::sin(pose(2))));
-    rotated_data_y.push_back((data_x*std::sin(pose(2))) + (data_y*std::cos(pose(2))));
+    rotated_data_x.push_back((data_x[i]*std::cos(pose(2))) - (data_y[i]*std::sin(pose(2))));
+    rotated_data_y.push_back((data_x[i]*std::sin(pose(2))) + (data_y[i]*std::cos(pose(2))));
   }
 
   Eigen::MatrixXd rotated_img_e = Eigen::MatrixXd::Ones(size, size)*255; 
@@ -309,15 +310,17 @@ void Particle::get_local_map(Eigen::MatrixXd img_e){
   for(int j=0; j<size; j++){
     for(int i=0; i<size; i++){
       int plot_toggle = 0;
-      for(int k=0; k<rotated_data_x.size(); i++){
-        double x_point = rotated_data_x + (size/2) - 0.5;
-        double y_point = -rotated_data_y + (size/2) - 0.5;
-        if check_point_within_rect(i, j, i+1, j+1, x_point, y_point){
+      for(int k=0; k<rotated_data_x.size(); k++){
+        double x_point = rotated_data_x[k] + (size/2);
+        double y_point = -rotated_data_y[k] + (size/2);
+        //ROS_INFO("%lf, %lf", x_point, y_point);
+        if(check_point_within_rect(i, j, i+1, j+1, x_point, y_point)){
           plot_toggle = 1;
         }
       }
       if(plot_toggle){
-        rotated_img_e(j, i);
+        rotated_img_e(j, i) = 0;
+        //ROS_INFO("%d, %d", i, j);
       }
     }
   }
@@ -394,7 +397,7 @@ int main(int argc, char** argv){
   Particle p[PARTICLE_NUM];
 
   for(int i=0; i<PARTICLE_NUM; i++){
-    p[i].init_pose(0, 0, i*0.5);
+    p[i].init_pose(0, 0, i*0.26);
   }
 
 //  // 地図を読み込みグローバルマップを生成
@@ -410,8 +413,11 @@ int main(int argc, char** argv){
       lm.get_scan(n.scan);
       Eigen::MatrixXd local_map = lm.get_local_map();
 
+      p[6].get_local_map(local_map);
+      lm.export_map_image(p[6].local_map);
+
       // ローカルマップを png 形式で出力
-      lm.export_map_image(local_map);
+      //lm.export_map_image(local_map);
     }else{
       ROS_INFO("waiting scan topic...");
     }
