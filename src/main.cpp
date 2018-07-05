@@ -48,14 +48,17 @@ public:
   Eigen::Vector3d get_odom_pose();
   Eigen::Vector3d get_pose();
   Eigen::MatrixXd get_path_map();
+  void init_pose(double x, double y, double th);
+  void get_local_map(Eigen::MatrixXd img_e);
   void export_map_image(Eigen::MatrixXd img_e);
   double weight;
   int size_x;
   int size_y;
   Eigen::Vector3d pose;
   Eigen::Vector3d pose_base;
-  Eigen::Vector3d initial_pose;
+  Eigen::Vector3d pose_initial;
   Eigen::Vector3d odom_temp;
+  Eigen::MatrixXd local_map();
 
 private:
   std::string homepath;
@@ -86,6 +89,14 @@ inline Eigen::Vector3d set_pose(double x, double y, double th){
   vec(1) = y;
   vec(2) = th;
   return vec;
+}
+
+inline int check_point_within_rect(int x1, int y1, int x2, int y2, double x, double y){
+  if(x >= x1 && x <= x2 && y <= y1 && y >= y2){
+    return 1;
+  }else{
+    return 0;
+  }
 }
 
 //----------------------------------------------------------------------
@@ -155,8 +166,7 @@ void LocalMap::get_scan(sensor_msgs::LaserScan::ConstPtr _scan){
 
 Eigen::MatrixXd LocalMap::get_local_map(){
   // 全ての要素の値が255でローカルマップサイズの行列を取得
-  Eigen::MatrixXd img_e = Eigen::MatrixXd::Ones(size, size); 
-  img_e *= 255;
+  Eigen::MatrixXd img_e = Eigen::MatrixXd::Ones(size, size)*255; 
 
   for(double th=scan->angle_min, i=0; th<=scan->angle_max; th+=scan->angle_increment, i++){
     if(scan->ranges[i] > 0){
@@ -184,27 +194,25 @@ void LocalMap::export_map_image(Eigen::MatrixXd img_e){
 
 Particle::Particle(){
   // 初期化
-  pose = set_pose(0, 0, 0);
-  pose_base = set_pose(0, 0, 0);
-  initial_pose = set_pose(0, 0, 0);
+  init_pose(0, 0, 0);
   odom_temp = set_pose(0, 0, 0);
   weight = 0;
   homepath = std::getenv("HOME");
 
   // 地図の読み込んでサイズを取得
-  cv::Mat img = cv::imread(homepath + "/catkin_ws/src/easy_mcl/map/map.pgm", 0);
-  if(img.empty()){
-    ROS_ERROR("particle: unable to open the map");
-  }else{
-    ROS_INFO("particle: map loaded");
-  }
-  size_x = img.rows;
-  size_y = img.cols;
-  ROS_INFO("x: %d, y: %d", size_x, size_y);
+//  cv::Mat img = cv::imread(homepath + "/catkin_ws/src/easy_mcl/map/map.pgm", 0);
+//  if(img.empty()){
+//    ROS_ERROR("particle: unable to open the map");
+//  }else{
+//    ROS_INFO("particle: map loaded");
+//  }
+//  size_x = img.rows;
+//  size_y = img.cols;
+//  ROS_INFO("x: %d, y: %d", size_x, size_y);
 
   // 軌跡をまっさらにする
-  path_map = Eigen::MatrixXd::Ones(size_y, size_x); 
-  path_map *= 255;
+//  path_map = Eigen::MatrixXd::Ones(size_y, size_x); 
+//  path_map *= 255;
 }
 
 Particle::~Particle(){}
@@ -229,8 +237,8 @@ Eigen::Vector3d Particle::get_pose(){
   Eigen::Vector3d odom_diff = odom_pose - odom_temp; 
   pose_base += odom_diff;
  
-  pose(0) = (pose_base(0)*std::cos(initial_pose(2))) - (pose_base(1)*std::sin(initial_pose(2)));
-  pose(1) = (pose_base(0)*std::sin(initial_pose(2))) + (pose_base(1)*std::cos(initial_pose(2)));
+  pose(0) = (pose_base(0)*std::cos(pose_initial(2))) - (pose_base(1)*std::sin(pose_initial(2)));
+  pose(1) = (pose_base(0)*std::sin(pose_initial(2))) + (pose_base(1)*std::cos(pose_initial(2)));
   pose(2) = pose_base(2);
 
   odom_temp = odom_pose;
@@ -265,6 +273,56 @@ void Particle::export_map_image(Eigen::MatrixXd img_e){
   ROS_INFO("particle: eigen -> opencv");
   cv::imwrite(homepath + "/catkin_ws/src/easy_mcl/map/path_map.pgm", img);
   ROS_INFO("particle: map exported");
+}
+
+void Particle::init_pose(double x, double y, double th){
+  pose = set_pose(x, y, th);
+  pose_base = set_pose(x, y, th);
+  pose_initial = set_pose(x, y, th);
+}
+
+void Particle::get_local_map(Eigen::MatrixXd img_e){
+  int size = 240;
+
+  std::vector<double> data_x;
+  std::vector<double> data_y;
+
+  for(int j=0; j<size; j++){
+    for(int i=0; i<size; i++){
+      if(img_e(j, i) == 0){
+        data_x.push_back(i-(size/2)+0.5);
+        data_y.push_back((size/2)-j-0.5);
+      }
+    }
+  }
+
+  std::vector<double> rotated_data_x;
+  std::vector<double> rotated_data_y;
+
+  for(int i=0; i<data_x.size(); i++){
+    rotated_data_x.push_back((data_x*std::cos(pose(2))) - (data_y*std::sin(pose(2))));
+    rotated_data_y.push_back((data_x*std::sin(pose(2))) + (data_y*std::cos(pose(2))));
+  }
+
+  Eigen::MatrixXd rotated_img_e = Eigen::MatrixXd::Ones(size, size)*255; 
+
+  for(int j=0; j<size; j++){
+    for(int i=0; i<size; i++){
+      int plot_toggle = 0;
+      for(int k=0; k<rotated_data_x.size(); i++){
+        double x_point = rotated_data_x + (size/2) - 0.5;
+        double y_point = -rotated_data_y + (size/2) - 0.5;
+        if check_point_within_rect(i, j, i+1, j+1, x_point, y_point){
+          plot_toggle = 1;
+        }
+      }
+      if(plot_toggle){
+        rotated_img_e(j, i);
+      }
+    }
+  }
+
+  local_map = rotated_img_e;
 }
 
 //----------------------------------------------------------------------
@@ -328,7 +386,7 @@ void Node::publish_particle_cloud(Particle p[]){
 int main(int argc, char** argv){
   ros::init(argc, argv, "easy_mcl");
   ros::NodeHandle nh;
-  ros::Rate rate(10);
+  ros::Rate rate(0.5);
 
   Node n(nh);
   GlobalMap gm;
@@ -336,10 +394,7 @@ int main(int argc, char** argv){
   Particle p[PARTICLE_NUM];
 
   for(int i=0; i<PARTICLE_NUM; i++){
-    p[i].pose = set_pose(0, 0, i*0.5);
-    p[i].pose_base = set_pose(0, 0, i*0.5);
-    p[i].initial_pose = set_pose(0, 0, i*0.5);
-    //p[i].pose = set_pose(i, 0, 0);
+    p[i].init_pose(0, 0, i*0.5);
   }
 
 //  // 地図を読み込みグローバルマップを生成
@@ -350,17 +405,17 @@ int main(int argc, char** argv){
 //
   while(ros::ok()){
 //
-//    if(n.scan_toggle){
-//      // scan トピックからローカルマップを生成
-//      lm.get_scan(n.scan);
-//      Eigen::MatrixXd local_map = lm.get_local_map();
-//
-//      // ローカルマップを png 形式で出力
-//      lm.export_map_image(local_map);
-//    }else{
-//      ROS_INFO("waiting scan topic...");
-//    }
-//
+    if(n.scan_toggle){
+      // scan トピックからローカルマップを生成
+      lm.get_scan(n.scan);
+      Eigen::MatrixXd local_map = lm.get_local_map();
+
+      // ローカルマップを png 形式で出力
+      lm.export_map_image(local_map);
+    }else{
+      ROS_INFO("waiting scan topic...");
+    }
+
     if(n.odom_toggle){
       // odom トピックから, オドメトリをプロットした地図を生成し, png 形式で出力
 //      Eigen::MatrixXd path_map = p->get_path_map();
