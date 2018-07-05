@@ -48,8 +48,9 @@ public:
   Eigen::Vector3d get_odom_pose();
   Eigen::Vector3d get_pose();
   Eigen::MatrixXd get_path_map();
-  void init_pose(double x, double y, double th);
+  void init_pose(int y_px, int x_px, double th);
   void get_local_map(Eigen::MatrixXd img_e);
+  void get_global_map(Eigen::MatrixXd img_e);
   void export_map_image(Eigen::MatrixXd img_e);
   double weight;
   int size_x;
@@ -59,6 +60,7 @@ public:
   Eigen::Vector3d pose_initial;
   Eigen::Vector3d odom_temp;
   Eigen::MatrixXd local_map;
+  Eigen::MatrixXd global_map;
 
 private:
   std::string homepath;
@@ -275,7 +277,13 @@ void Particle::export_map_image(Eigen::MatrixXd img_e){
   ROS_INFO("particle: map exported");
 }
 
-void Particle::init_pose(double x, double y, double th){
+void Particle::init_pose(int y_px, int x_px, double th){
+  double resolution = 0.05;
+  double x = x_px*resolution; 
+  double y = -y_px*resolution; 
+  ROS_INFO("y_px: %d, x_px: %d", y_px, x_px);
+  ROS_INFO("y: %lf, x: %lf", y, x);
+
   pose = set_pose(x, y, th);
   pose_base = set_pose(x, y, th);
   pose_initial = set_pose(x, y, th);
@@ -292,7 +300,6 @@ void Particle::get_local_map(Eigen::MatrixXd img_e){
       if(img_e(j, i) == 0){
         data_x.push_back(i-(size/2)+0.5);
         data_y.push_back((size/2)-j-0.5);
-        //ROS_INFO("%lf, %lf", i-(size/2)+0.5, (size/2)-j-0.5);
       }
     }
   }
@@ -313,19 +320,44 @@ void Particle::get_local_map(Eigen::MatrixXd img_e){
       for(int k=0; k<rotated_data_x.size(); k++){
         double x_point = rotated_data_x[k] + (size/2);
         double y_point = -rotated_data_y[k] + (size/2);
-        //ROS_INFO("%lf, %lf", x_point, y_point);
         if(check_point_within_rect(i, j, i+1, j+1, x_point, y_point)){
           plot_toggle = 1;
         }
       }
       if(plot_toggle){
         rotated_img_e(j, i) = 0;
-        //ROS_INFO("%d, %d", i, j);
       }
     }
   }
 
   local_map = rotated_img_e;
+}
+
+void Particle::get_global_map(Eigen::MatrixXd img_e){
+  int size_l = 240;
+  int size_g = 2048;
+  double resolution = 0.05;
+
+  //double x = pose(0)/resolution;
+  //double y = pose(1)/resolution;
+  double y = -pose(0)/resolution;
+  double x = pose(1)/resolution;
+
+  ROS_INFO("y_px: %lf, x_px: %lf", -y, x);
+
+  Eigen::MatrixXd cut_img_e = Eigen::MatrixXd::Ones(size_l, size_l)*255; 
+
+  for(int j=0; j<size_l; j++){
+    for(int i=0; i<size_l; i++){
+      if(check_point_within_rect(int(size_l/2), int(size_l/2), int(size_g-(size_l/2)), int(size_g-(size_l/2)), x+i, -y+j)){
+        if(img_e(int(-y-(size_l/2)+j), int(x-(size_l/2)+i)) == 0){
+          cut_img_e(j, i) = 0;
+        }
+      }
+    }
+  }
+
+  global_map = cut_img_e;
 }
 
 //----------------------------------------------------------------------
@@ -397,11 +429,11 @@ int main(int argc, char** argv){
   Particle p[PARTICLE_NUM];
 
   for(int i=0; i<PARTICLE_NUM; i++){
-    p[i].init_pose(0, 0, i*0.26);
+    p[i].init_pose(755, 1813, i*0.26);    //15degずつずらす
   }
 
-//  // 地図を読み込みグローバルマップを生成
-//  Eigen::MatrixXd global_map = gm.get_global_map();
+  // 地図を読み込みグローバルマップを生成
+  Eigen::MatrixXd global_map = gm.get_global_map();
 //
 //  // グローバルマップを png 形式で出力
 //  gm.export_map_image(global_map);
@@ -413,8 +445,11 @@ int main(int argc, char** argv){
       lm.get_scan(n.scan);
       Eigen::MatrixXd local_map = lm.get_local_map();
 
-      p[6].get_local_map(local_map);
-      lm.export_map_image(p[6].local_map);
+      //p[6].get_local_map(local_map);
+      //lm.export_map_image(p[6].local_map);
+      
+      p[6].get_global_map(global_map);
+      lm.export_map_image(p[6].global_map);
 
       // ローカルマップを png 形式で出力
       //lm.export_map_image(local_map);
