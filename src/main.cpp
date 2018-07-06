@@ -9,6 +9,7 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <cstdlib>
 #include <cmath>
+#include <random>
 
 #define PARTICLE_NUM 10
 
@@ -99,6 +100,61 @@ inline int check_point_within_rect(int x1, int y1, int x2, int y2, double x, dou
   }else{
     return 0;
   }
+}
+
+inline void resampling(Particle p[]){
+  std::random_device rnd;
+  std::mt19937 mt(rnd());
+
+  int weight_total = 0;
+  for(int i=0; i<PARTICLE_NUM; i++){
+    weight_total += p[i].weight;
+  }
+
+  std::uniform_int_distribution<> rand1(0, p[0].weight);    // 範囲内の一様乱数
+  double M = double(weight_total) / PARTICLE_NUM;
+  int r = rand1(mt);
+
+  std::vector<int> point;
+  for (int i=0; i<PARTICLE_NUM; i++){
+    point.push_back(int(r+(M*i)));
+  }
+
+  Particle p_next[PARTICLE_NUM];
+  int weight_sum = 0;
+  int count = 0;
+  int end_pick = 0;
+  
+  for(int i=0; i<PARTICLE_NUM; i++){
+    int weight_sum_temp = weight_sum; 
+    weight_sum += p[i].weight;
+    while(point[count] >= weight_sum_temp && point[count] < weight_sum && end_pick == 0){
+      p_next[count].pose = p[i].pose;
+      p_next[count].pose_initial = p[i].pose_initial;
+      p_next[count].odom_temp = p[i].odom_temp;
+      if(count < point.size()-1){
+        count += 1;
+      }else{
+        end_pick = 1;
+      }
+    }
+  }
+
+  std::normal_distribution<> norm1(0, 0.1);    // 正規分布: 平均0, 分散2
+  std::normal_distribution<> norm2(0, 0.2);    // 正規分布: 平均0, 分散0.2
+  for(int i=0; i<PARTICLE_NUM; i++){
+    Eigen::Vector3d nomal_error;
+    nomal_error(0) = norm1(mt);
+    nomal_error(1) = norm1(mt);
+    nomal_error(2) = norm2(mt); 
+
+    p_next[count].pose += nomal_error;
+    p_next[count].pose_initial += nomal_error;
+    p_next[count].odom_temp += nomal_error;
+
+    p[i] = p_next[i];
+  }
+
 }
 
 //----------------------------------------------------------------------
@@ -483,8 +539,9 @@ int main(int argc, char** argv){
         p[i].calc_weight();
 
         ROS_INFO("%d: %d", i, p[i].weight);
-        n.publish_particle_cloud(p);
       }
+      n.publish_particle_cloud(p);
+      resampling(p);
     }
 
     ros::spinOnce();

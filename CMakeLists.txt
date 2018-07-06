@@ -30,6 +30,7 @@ catkin_package(
 )
 
 add_definitions(${EIGEN_DEFINITIONS})
+add_definitions(-std=c++11)
 
 add_executable(easy_mcl src/main.cpp)
 
