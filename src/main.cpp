@@ -10,8 +10,10 @@
 #include <cstdlib>
 #include <cmath>
 #include <random>
+#include <thread>
+#include <vector>
 
-#define PARTICLE_NUM 10
+#define PARTICLE_NUM 20
 
 class GlobalMap{
 public:
@@ -488,7 +490,7 @@ int main(int argc, char** argv){
   Particle p[PARTICLE_NUM];
 
   for(int i=0; i<PARTICLE_NUM; i++){
-    p[i].init_pose(755, 1813, i*0.26);    //15degずつずらす
+    p[i].init_pose(749, 1813, i*0.174);    //10degずつずらす
   }
 
   // 地図を読み込みグローバルマップを生成
