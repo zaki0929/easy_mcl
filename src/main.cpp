@@ -13,7 +13,7 @@
 #include <thread>
 #include <vector>
 
-#define PARTICLE_NUM 20
+#define PARTICLE_NUM 100 
 
 class GlobalMap{
 public:
@@ -142,17 +142,19 @@ inline void resampling(Particle p[]){
     }
   }
 
-  std::normal_distribution<> norm1(0, 0.1);    // 正規分布: 平均0, 分散2
-  std::normal_distribution<> norm2(0, 0.2);    // 正規分布: 平均0, 分散0.2
+  std::normal_distribution<> norm1(0, 0.1);    // 正規分布: 平均0, 分散0.1
+  std::normal_distribution<> norm2(0, 0.3);    // 正規分布: 平均0, 分散0.3
   for(int i=0; i<PARTICLE_NUM; i++){
     Eigen::Vector3d nomal_error;
     nomal_error(0) = norm1(mt);
     nomal_error(1) = norm1(mt);
     nomal_error(2) = norm2(mt); 
 
-    p_next[count].pose += nomal_error;
-    p_next[count].pose_initial += nomal_error;
-    p_next[count].odom_temp += nomal_error;
+    ROS_INFO("-> 1: %lf, 2: %lf, 3: %lf", nomal_error(0), nomal_error(1), nomal_error(2));
+
+    p_next[i].pose += nomal_error;
+    p_next[i].pose_initial += nomal_error;
+    p_next[i].odom_temp += nomal_error;
 
     p[i] = p_next[i];
   }
@@ -490,7 +492,7 @@ int main(int argc, char** argv){
   Particle p[PARTICLE_NUM];
 
   for(int i=0; i<PARTICLE_NUM; i++){
-    p[i].init_pose(749, 1813, i*0.174);    //10degずつずらす
+    p[i].init_pose(730, 1820, i*0.174);    //10degずつずらす
   }
 
   // 地図を読み込みグローバルマップを生成
@@ -534,14 +536,21 @@ int main(int argc, char** argv){
     if(n.scan_toggle && n.odom_toggle){
       Eigen::MatrixXd local_map = lm.get_local_map();
 
+      std::vector<std::thread> threads;
       for(int i=0; i<PARTICLE_NUM; i++){
-        p[i].get_pose();
-        p[i].get_local_map(local_map);
-        p[i].get_global_map(global_map);
-        p[i].calc_weight();
-
-        ROS_INFO("%d: %d", i, p[i].weight);
+        threads.emplace_back([i, &p, &local_map, &global_map](){
+          p[i].get_pose();
+          p[i].get_local_map(local_map);
+          p[i].get_global_map(global_map);
+          p[i].calc_weight();
+          ROS_INFO("%d: %d", i, p[i].weight);
+        });
       }
+
+      for(auto& t : threads){
+        t.join();
+      }
+
       n.publish_particle_cloud(p);
       resampling(p);
     }

@@ -23,7 +23,7 @@ COMPONENTS
 )
 
 catkin_package(
-  INCLUDE_DIRS include
+	#  INCLUDE_DIRS include
   LIBRARIES easy_mcl
   CATKIN_DEPENDS roscpp sensor_msgs nav_msgs geometry_msgs std_msgs
   DEPENDS eigen opencv3
