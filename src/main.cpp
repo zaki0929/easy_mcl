@@ -142,8 +142,8 @@ inline void resampling(Particle p[]){
     }
   }
 
-  std::normal_distribution<> norm1(0, 0.1);    // 正規分布: 平均0, 分散0.1
-  std::normal_distribution<> norm2(0, 0.3);    // 正規分布: 平均0, 分散0.3
+  std::normal_distribution<> norm1(0, 0.2);    // 正規分布: 平均0, 分散0.2
+  std::normal_distribution<> norm2(0, 0.01);    // 正規分布: 平均0, 分散0.01
   for(int i=0; i<PARTICLE_NUM; i++){
     Eigen::Vector3d nomal_error;
     nomal_error(0) = norm1(mt);
@@ -409,7 +409,6 @@ void Particle::get_global_map(Eigen::MatrixXd img_e){
       }
     }
   }
-
   global_map = cut_img_e;
 }
 
@@ -461,19 +460,24 @@ void Node::publish_particle_cloud(Particle p[]){
   pose_array.header.frame_id = "map";
   pose_array.poses.resize(PARTICLE_NUM);
   
+  std::vector<std::thread> threads;
   for(int i=0; i<PARTICLE_NUM; i++){
-
-    // ロールピッチヨー角からクォータニオンを取得
-    tf::Quaternion q = tf::createQuaternionFromRPY(0, 0, p[i].pose(2));
-
-    pose_array.poses[i].position.x = p[i].pose(0); 
-    pose_array.poses[i].position.y = p[i].pose(1);
-    pose_array.poses[i].position.z = 0;
+    threads.emplace_back([i, &p, &pose_array](){
+      // ロールピッチヨー角からクォータニオンを取得
+      tf::Quaternion q = tf::createQuaternionFromRPY(0, 0, p[i].pose(2));
   
-    pose_array.poses[i].orientation.x = q.x();
-    pose_array.poses[i].orientation.y = q.y();
-    pose_array.poses[i].orientation.z = q.z();
-    pose_array.poses[i].orientation.w = q.w();
+      pose_array.poses[i].position.x = p[i].pose(0); 
+      pose_array.poses[i].position.y = p[i].pose(1);
+      pose_array.poses[i].position.z = 0;
+    
+      pose_array.poses[i].orientation.x = q.x();
+      pose_array.poses[i].orientation.y = q.y();
+      pose_array.poses[i].orientation.z = q.z();
+      pose_array.poses[i].orientation.w = q.w();
+    });
+  }
+  for(auto& t : threads){
+    t.join();
   }
 
   pose_pub.publish(pose_array);
@@ -491,9 +495,19 @@ int main(int argc, char** argv){
   LocalMap lm;
   Particle p[PARTICLE_NUM];
 
+//  for(int i=0; i<PARTICLE_NUM; i++){
+//    p[i].init_pose(730, 1820, i*0.174);    //10degずつずらす
+//  }
+
   for(int i=0; i<PARTICLE_NUM; i++){
-    p[i].init_pose(730, 1820, i*0.174);    //10degずつずらす
+    p[i].init_pose(730, 1820, 3.14+1.07-1.57); 
   }
+
+//  for(int j=0; j<10; j++){
+//    for(int i=0; i<PARTICLE_NUM/10; i++){
+//      p[i+j].init_pose(730, 1820, i*0.0174+3.14);    //1degずつずらす
+//    }
+//  }
 
   // 地図を読み込みグローバルマップを生成
   Eigen::MatrixXd global_map = gm.get_global_map();
@@ -546,7 +560,6 @@ int main(int argc, char** argv){
           ROS_INFO("%d: %d", i, p[i].weight);
         });
       }
-
       for(auto& t : threads){
         t.join();
       }
