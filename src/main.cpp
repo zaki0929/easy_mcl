@@ -13,7 +13,7 @@
 #include <thread>
 #include <vector>
 
-#define PARTICLE_NUM 100 
+#define PARTICLE_NUM 10 
 
 class GlobalMap{
 public:
@@ -104,7 +104,8 @@ inline int check_point_within_rect(int x1, int y1, int x2, int y2, double x, dou
   }
 }
 
-inline void resampling(Particle p[]){
+inline void resampling(Particle p[], Particle p_temp[], Eigen::MatrixXd global_map){
+  
   std::random_device rnd;
   std::mt19937 mt(rnd());
 
@@ -142,6 +143,7 @@ inline void resampling(Particle p[]){
     }
   }
 
+  // パーティクルの位置を少しずらす
   std::normal_distribution<> norm1(0, 0.2);    // 正規分布: 平均0, 分散0.2
   std::normal_distribution<> norm2(0, 0.01);    // 正規分布: 平均0, 分散0.01
   for(int i=0; i<PARTICLE_NUM; i++){
@@ -150,13 +152,24 @@ inline void resampling(Particle p[]){
     nomal_error(1) = norm1(mt);
     nomal_error(2) = norm2(mt); 
 
-    ROS_INFO("-> 1: %lf, 2: %lf, 3: %lf", nomal_error(0), nomal_error(1), nomal_error(2));
+    //ROS_INFO("-> 1: %lf, 2: %lf, 3: %lf", nomal_error(0), nomal_error(1), nomal_error(2));
 
     p_next[i].pose += nomal_error;
     p_next[i].pose_initial += nomal_error;
     p_next[i].odom_temp += nomal_error;
 
-    p[i] = p_next[i];
+    // グレーゾーンにパーティクルがいってしまった場合引き戻す
+    double resolution = 0.05;
+    double x = p_next[i].pose(0)/resolution;
+    double y = p_next[i].pose(1)/resolution;
+
+    if(global_map(-y, x) == 205){
+      ROS_INFO("back");
+      p[i] = p_temp[i];
+    }else{
+      ROS_INFO("next");
+      p[i] = p_next[i];
+    }
   }
 
 }
@@ -190,13 +203,14 @@ Eigen::MatrixXd GlobalMap::get_global_map(){
 }
 
 Eigen::MatrixXd GlobalMap::binarize_map(Eigen::MatrixXd img_e){
+  ROS_INFO("global map: %lf", img_e(0, 0));
   // 200を閾値にして地図を二値化する
   for(int i=0; i<img_e.rows(); i++){
     for(int j=0; j<img_e.cols(); j++){
-      if(img_e(j, i) > 200){
+      if(img_e(j, i) > 205){
         img_e(j, i) = 255;
       }
-      else{
+      else if(img_e(j, i) < 205){
         img_e(j, i) = 0;
       }
     }
@@ -402,9 +416,12 @@ void Particle::get_global_map(Eigen::MatrixXd img_e){
 
   for(int j=0; j<size_l; j++){
     for(int i=0; i<size_l; i++){
-      if(check_point_within_rect(int(size_l/2), int(size_l/2), int(size_g-(size_l/2)), int(size_g-(size_l/2)), x+i, -y+j)){
+      if(check_point_within_rect(0, 0, size_g, size_g, x-(size_l/2)+i, -y-(size_l/2)+j)){
         if(img_e(int(-y-(size_l/2)+j), int(x-(size_l/2)+i)) == 0){
           cut_img_e(j, i) = 0;
+        }
+        if(img_e(int(-y-(size_l/2)+j), int(x-(size_l/2)+i)) == 205){
+          cut_img_e(j, i) = 205;
         }
       }
     }
@@ -494,6 +511,7 @@ int main(int argc, char** argv){
   GlobalMap gm;
   LocalMap lm;
   Particle p[PARTICLE_NUM];
+  Particle p_temp[PARTICLE_NUM];
 
 //  for(int i=0; i<PARTICLE_NUM; i++){
 //    p[i].init_pose(730, 1820, i*0.174);    //10degずつずらす
@@ -501,6 +519,7 @@ int main(int argc, char** argv){
 
   for(int i=0; i<PARTICLE_NUM; i++){
     p[i].init_pose(730, 1820, 3.14+1.07-1.57); 
+    p_temp[i] = p[i];
   }
 
 //  for(int j=0; j<10; j++){
@@ -511,12 +530,12 @@ int main(int argc, char** argv){
 
   // 地図を読み込みグローバルマップを生成
   Eigen::MatrixXd global_map = gm.get_global_map();
-//
-//  // グローバルマップを png 形式で出力
+
+  // グローバルマップを png 形式で出力
 //  gm.export_map_image(global_map);
-//
+
   while(ros::ok()){
-//
+
     if(n.scan_toggle){
       // scan トピックからローカルマップを生成
       lm.get_scan(n.scan);
@@ -564,8 +583,13 @@ int main(int argc, char** argv){
         t.join();
       }
 
+      //lm.export_map_image(p[0].global_map);
+      //lm.export_map_image(p[0].local_map);
+      resampling(p, p_temp, global_map);
       n.publish_particle_cloud(p);
-      resampling(p);
+      for(int i=0; i<PARTICLE_NUM; i++){
+        p_temp[i] = p[i];
+      }
     }
 
     ros::spinOnce();
