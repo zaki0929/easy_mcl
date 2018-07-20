@@ -13,7 +13,7 @@
 #include <thread>
 #include <vector>
 
-#define PARTICLE_NUM 10 
+#define PARTICLE_NUM 100 
 
 class GlobalMap{
 public:
@@ -513,20 +513,32 @@ int main(int argc, char** argv){
   Particle p[PARTICLE_NUM];
   Particle p_temp[PARTICLE_NUM];
 
+//  std::random_device rnd;
+//  std::mt19937 mt(rnd());
+//  std::uniform_int_distribution<> x_px_range(1543, 1760);    // 範囲内の一様乱数
+//  std::uniform_int_distribution<> y_px_range(649, 865);    // 範囲内の一様乱数
+//  std::uniform_int_distribution<> th_range(0, 360);    // 範囲内の一様乱数
+//
+//  for(int i=0; i<PARTICLE_NUM; i++){
+//    p[i].init_pose(int(x_px_range(mt)), int(y_px_range(mt)), double(th_range(mt)*3.14/180));
+//    p_temp[i] = p[i];
+//  }
+
 //  for(int i=0; i<PARTICLE_NUM; i++){
 //    p[i].init_pose(730, 1820, i*0.174);    //10degずつずらす
+//    p_temp[i] = p[i];
 //  }
 
-  for(int i=0; i<PARTICLE_NUM; i++){
-    p[i].init_pose(730, 1820, 3.14+1.07-1.57); 
-    p_temp[i] = p[i];
+//  for(int i=0; i<PARTICLE_NUM; i++){
+//    p[i].init_pose(730, 1820, 3.14+1.07-1.57); 
+//    p_temp[i] = p[i];
+//  }
+
+  for(int j=0; j<10; j++){
+    for(int i=0; i<PARTICLE_NUM/10; i++){
+      p[i+j].init_pose(730, 1820, i*0.0174+3.14);    //1degずつずらす
+    }
   }
-
-//  for(int j=0; j<10; j++){
-//    for(int i=0; i<PARTICLE_NUM/10; i++){
-//      p[i+j].init_pose(730, 1820, i*0.0174+3.14);    //1degずつずらす
-//    }
-//  }
 
   // 地図を読み込みグローバルマップを生成
   Eigen::MatrixXd global_map = gm.get_global_map();
