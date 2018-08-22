@@ -158,18 +158,23 @@ inline void resampling(Particle p[], Particle p_temp[], Eigen::MatrixXd global_m
     p_next[i].pose_initial += nomal_error;
     p_next[i].odom_temp += nomal_error;
 
-    // グレーゾーンにパーティクルがいってしまった場合引き戻す
-    double resolution = 0.05;
-    double x = p_next[i].pose(0)/resolution;
-    double y = p_next[i].pose(1)/resolution;
-
-    if(global_map(-y, x) == 205){
-      ROS_INFO("back");
-      p[i] = p_temp[i];
-    }else{
-      ROS_INFO("next");
-      p[i] = p_next[i];
-    }
+//    // グレーゾーンにパーティクルがいってしまった場合引き戻す
+//    double resolution = 0.05;
+//    double x = p_next[i].pose(0)/resolution;
+//    double y = p_next[i].pose(1)/resolution;
+//
+//    ROS_INFO("%lf, %lf", -y, x);
+//    if(x < 0 || -y < 0){
+//    }else{
+//    if(global_map(-y, x) == 205 || !check_point_within_rect(0, 0, 2048, 2048, x, -y)){
+//    //if(global_map(-y, x) == 205){
+//      ROS_INFO("back");
+//      p[i] = p_temp[i];
+//    }else{
+//      ROS_INFO("next");
+//      p[i] = p_next[i];
+//    }
+//    }
   }
 
 }
@@ -513,16 +518,19 @@ int main(int argc, char** argv){
   Particle p[PARTICLE_NUM];
   Particle p_temp[PARTICLE_NUM];
 
-//  std::random_device rnd;
-//  std::mt19937 mt(rnd());
+  std::random_device rnd;
+  std::mt19937 mt(rnd());
 //  std::uniform_int_distribution<> x_px_range(1543, 1760);    // 範囲内の一様乱数
 //  std::uniform_int_distribution<> y_px_range(649, 865);    // 範囲内の一様乱数
-//  std::uniform_int_distribution<> th_range(0, 360);    // 範囲内の一様乱数
-//
-//  for(int i=0; i<PARTICLE_NUM; i++){
-//    p[i].init_pose(int(x_px_range(mt)), int(y_px_range(mt)), double(th_range(mt)*3.14/180));
-//    p_temp[i] = p[i];
-//  }
+
+  std::uniform_int_distribution<> x_px_range(700, 800);    // 範囲内の一様乱数
+  std::uniform_int_distribution<> y_px_range(1750, 1850);    // 範囲内の一様乱数
+  std::uniform_int_distribution<> th_range(0, 360);    // 範囲内の一様乱数
+
+  for(int i=0; i<PARTICLE_NUM; i++){
+    p[i].init_pose(x_px_range(mt), y_px_range(mt), double(th_range(mt))*3.14/180);
+    p_temp[i] = p[i];
+  }
 
 //  for(int i=0; i<PARTICLE_NUM; i++){
 //    p[i].init_pose(730, 1820, i*0.174);    //10degずつずらす
@@ -534,11 +542,11 @@ int main(int argc, char** argv){
 //    p_temp[i] = p[i];
 //  }
 
-  for(int j=0; j<10; j++){
-    for(int i=0; i<PARTICLE_NUM/10; i++){
-      p[i+j].init_pose(730, 1820, i*0.0174+3.14);    //1degずつずらす
-    }
-  }
+//  for(int j=0; j<10; j++){
+//    for(int i=0; i<PARTICLE_NUM/10; i++){
+//      p[i+j].init_pose(730, 1820, i*0.0174+3.14);    //1degずつずらす
+//    }
+//  }
 
   // 地図を読み込みグローバルマップを生成
   Eigen::MatrixXd global_map = gm.get_global_map();
