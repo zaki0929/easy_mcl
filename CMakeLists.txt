@@ -10,6 +10,7 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   std_msgs
   tf2
+  tf
 )
 
 find_package(Eigen3 REQUIRED)

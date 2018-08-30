@@ -2,9 +2,7 @@
 #include <sensor_msgs/LaserScan.h>
 #include <nav_msgs/Odometry.h>
 #include <geometry_msgs/PoseArray.h>
-#include <geometry_msgs/Pose.h>
 #include <tf/transform_datatypes.h>
-#include <tf/transform_broadcaster.h>
 #include <Eigen/Dense>
 #include <opencv2/core/core.hpp>
 #include <opencv2/core/eigen.hpp>
@@ -79,13 +77,11 @@ public:
   ros::Subscriber scan_sub;
   ros::Subscriber odom_sub;
   ros::Publisher pose_pub;
-  ros::Publisher max_wight_pose_pub;
   sensor_msgs::LaserScan::ConstPtr scan;
   nav_msgs::Odometry::ConstPtr odom;
   void scanCallback(const sensor_msgs::LaserScan::ConstPtr& msg);
   void odomCallback(const nav_msgs::Odometry::ConstPtr& msg);
   void publish_particle_cloud(Particle p[]);
-  void publish_max_weight_particle(Particle p[]);
   int scan_toggle;
   int odom_toggle;
 };
@@ -168,114 +164,19 @@ inline void resampling(Particle p[], Particle p_temp[], Eigen::MatrixXd global_m
     double y = p_next[i].pose(1)/resolution;
 
     ROS_INFO("%lf, %lf", -y, x);
-
-    if(check_point_within_rect(0, 0, 2047, 2047, x, -y)){
-     if(global_map(-y, x) == 205){
-       ROS_INFO("back");
-       p[i] = p_temp[i];
-     }else{
-       ROS_INFO("next");
-       p[i] = p_next[i];
-     }
+    if(x < 0 || -y < 0){
     }else{
-     ROS_INFO("back");
-     p[i] = p_temp[i];
-    }
-    
-  }
-
-}
-
-//----------------------------------------------------------------------
-
-GlobalMap::GlobalMap(){
-  homepath = std::getenv("HOME");
-}
-
-GlobalMap::~GlobalMap(){}
-
-Eigen::MatrixXd GlobalMap::get_global_map(){
-  // 地図の読み込み
-  cv::Mat img = cv::imread(homepath + "/catkin_ws/src/easy_mcl/map/map.pgm", 0);
-  if(img.empty()){
-    ROS_ERROR("global map: unable to open the map");
-  }else{
-    ROS_INFO("global map: map loaded");
-  }
-  
-  // 地図データをOpenCVからEigenに渡す
-  Eigen::MatrixXd img_e;
-  cv::cv2eigen(img, img_e);
-  ROS_INFO("global map: opencv -> eigen");
-  
-  // 地図データを二値化する
-  img_e = binarize_map(img_e);
-
-  return img_e;
-}
-
-Eigen::MatrixXd GlobalMap::binarize_map(Eigen::MatrixXd img_e){
-  ROS_INFO("global map: %lf", img_e(0, 0));
-  // 200を閾値にして地図を二値化する
-  for(int i=0; i<img_e.rows(); i++){
-    for(int j=0; j<img_e.cols(); j++){
-      if(img_e(j, i) > 205){
-        img_e(j, i) = 255;
-      }
-      else if(img_e(j, i) < 205){
-        img_e(j, i) = 0;
+      if(global_map(-y, x) == 205 || !check_point_within_rect(0, 0, 2048, 2048, x, -y)){
+      //if(global_map(-y, x) == 205){
+        ROS_INFO("back");
+        p[i] = p_temp[i];
+      }else{
+        ROS_INFO("next");
+        p[i] = p_next[i];
       }
     }
   }
-  ROS_INFO("global map: binarized");
-  return img_e;
-}
 
-void GlobalMap::export_map_image(Eigen::MatrixXd img_e){
-  // 地図データをEigenからOpenCVに渡し、出力
-  cv::Mat img;
-  cv::eigen2cv(img_e, img);
-  ROS_INFO("global map: eigen -> opencv");
-  cv::imwrite(homepath + "/catkin_ws/src/easy_mcl/map/global_map.pgm", img);
-  ROS_INFO("global map: map exported");
-}
-
-//----------------------------------------------------------------------
-
-LocalMap::LocalMap() : size(240){    // 240 x 240 
-  homepath = std::getenv("HOME");
-}
-
-LocalMap::~LocalMap(){}
-
-void LocalMap::get_scan(sensor_msgs::LaserScan::ConstPtr _scan){
-  scan = _scan;
-}
-
-Eigen::MatrixXd LocalMap::get_local_map(){
-  // 全ての要素の値が255でローカルマップサイズの行列を取得
-  Eigen::MatrixXd img_e = Eigen::MatrixXd::Ones(size, size)*255; 
-
-  for(double th=scan->angle_min, i=0; th<=scan->angle_max; th+=scan->angle_increment, i++){
-    if(scan->ranges[i] > 0){
-      int x = int(scan->ranges[i]*std::cos(th+M_PI_2)/0.05);
-      int y = int(scan->ranges[i]*std::sin(th+M_PI_2)/0.05);
-
-      img_e(int(size/2)-y, int(size/2)+x) = 0;
-    }
-  }
-  
-  ROS_INFO("local map: completed writing map");
-  return img_e;
-}
-
-void LocalMap::export_map_image(Eigen::MatrixXd img_e){
-  // 地図データをEigenからOpenCVに渡し、出力
-  cv::Mat img;
-  cv::eigen2cv(img_e, img);
-  ROS_INFO("local map: eigen -> opencv");
-  cv::imwrite(homepath + "/catkin_ws/src/easy_mcl/map/local_map.pgm", img);
-  ROS_INFO("local map: map exported");
 }
 
 //----------------------------------------------------------------------
@@ -458,7 +359,6 @@ Node::Node(ros::NodeHandle& nh){
   scan_sub = nh.subscribe("scan", 1000, &Node::scanCallback, this);
   odom_sub = nh.subscribe("odom", 1000, &Node::odomCallback, this);
   pose_pub = nh.advertise<geometry_msgs::PoseArray>("ParticleCloud", 10);
-  max_wight_pose_pub = nh.advertise<geometry_msgs::PoseArray>("EstimatedParticle", 10);
   scan_toggle = 0;
   odom_toggle = 0;
 }
@@ -513,107 +413,16 @@ void Node::publish_particle_cloud(Particle p[]){
   pose_pub.publish(pose_array);
 }
 
-void Node::publish_max_weight_particle(Particle p[]){
-  geometry_msgs::PoseArray pose_array;
-
-  // 初期化
-  pose_array.header.stamp = ros::Time::now();
-  pose_array.header.frame_id = "map";
-  pose_array.poses.resize(1);
-  Eigen::Vector3d max_weight_pose = p[0].pose;
-  int max_weight = p[0].weight;
-
-  // 最も重みが大きいパーティクルの姿勢を取得
-  for(int i=0; i<PARTICLE_NUM; i++){
-    if(p[i].weight > max_weight){
-      max_weight = p[i].weight;
-      max_weight_pose(0) = p[i].pose(0);
-      max_weight_pose(1) = p[i].pose(1);
-      max_weight_pose(2) = p[i].pose(2);
-    }
-  }
-
-  // ロールピッチヨー角からクォータニオンを取得
-  tf::Quaternion q = tf::createQuaternionFromRPY(0, 0, max_weight_pose(2));
-  
-  pose_array.poses[0].position.x = max_weight_pose(0); 
-  pose_array.poses[0].position.y = max_weight_pose(1);
-  pose_array.poses[0].position.z = 0;
-  
-  pose_array.poses[0].orientation.x = q.x();
-  pose_array.poses[0].orientation.y = q.y();
-  pose_array.poses[0].orientation.z = q.z();
-  pose_array.poses[0].orientation.w = q.w();
-  
-  max_wight_pose_pub.publish(pose_array);
-
-//  static tf::TransformBroadcaster br;
-//  tf::Transform transform;
-//  transform.setOrigin(tf::Vector3(max_weight_pose(0), max_weight_pose(1), 0.0));
-//  transform.setRotation(q);
-//  br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "EstimatedParticle"));
-
-}
-
-//void Node::publish_max_weight_particle(Particle p[]){
-//  geometry_msgs::Pose pose;
-//
-//  // 初期化
-//  Eigen::Vector3d max_weight_pose = p[0].pose;
-//  int max_weight = p[0].weight;
-//
-//  // 最も重みが大きいパーティクルの姿勢を取得
-//  for(int i=0; i<PARTICLE_NUM; i++){
-//    if(p[i].weight > max_weight){
-//      max_weight = p[i].weight;
-//      max_weight_pose(0) = p[i].pose(0);
-//      max_weight_pose(1) = p[i].pose(1);
-//      max_weight_pose(2) = p[i].pose(2);
-//    }
-//  }
-//
-//  // ロールピッチヨー角からクォータニオンを取得
-//  tf::Quaternion q = tf::createQuaternionFromRPY(0, 0, max_weight_pose(2));
-//  
-//  pose.position.x = max_weight_pose(0); 
-//  pose.position.y = max_weight_pose(1);
-//  pose.position.z = 0;
-//  
-//  pose.orientation.x = q.x();
-//  pose.orientation.y = q.y();
-//  pose.orientation.z = q.z();
-//  pose.orientation.w = q.w();
-//  
-//  max_wight_pose_pub.publish(pose);
-//
-////  static tf::TransformBroadcaster br;
-////  tf::Transform transform;
-////  transform.setOrigin(tf::Vector3(max_weight_pose(0), max_weight_pose(1), 0.0));
-////  transform.setRotation(q);
-////  br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "EstimatedParticle"));
-//
-//}
 //----------------------------------------------------------------------
 
 int main(int argc, char** argv){
-  ros::init(argc, argv, "easy_mcl");
+  ros::init(argc, argv, "pose_pub");
   ros::NodeHandle nh;
   ros::Rate rate(0.5);
 
   Node n(nh);
-  GlobalMap gm;
-  LocalMap lm;
   Particle p[PARTICLE_NUM];
   Particle p_temp[PARTICLE_NUM];
-
-  std::random_device rnd;
-  std::mt19937 mt(rnd());
-//  std::uniform_int_distribution<> x_px_range(1543, 1760);    // 範囲内の一様乱数
-//  std::uniform_int_distribution<> y_px_range(649, 865);    // 範囲内の一様乱数
-
-  std::uniform_int_distribution<> x_px_range(700, 800);    // 範囲内の一様乱数
-  std::uniform_int_distribution<> y_px_range(1750, 1850);    // 範囲内の一様乱数
-  std::uniform_int_distribution<> th_range(0, 360);    // 範囲内の一様乱数
 
   // パーティクル位置の初期化
   for(int i=0; i<PARTICLE_NUM; i++){
@@ -680,16 +489,10 @@ int main(int argc, char** argv){
       //lm.export_map_image(p[0].global_map);
       //lm.export_map_image(p[0].local_map);
       resampling(p, p_temp, global_map);
+      n.publish_particle_cloud(p);
       for(int i=0; i<PARTICLE_NUM; i++){
         p_temp[i] = p[i];
       }
-
-      // 最も重みの大きいパーティクルをパブリッシュ
-      n.publish_max_weight_particle(p);
-      
-      // パーティクルをパブリッシュ
-      n.publish_particle_cloud(p);
-
     }
 
     ros::spinOnce();
