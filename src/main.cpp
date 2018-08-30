@@ -608,11 +608,15 @@ int main(int argc, char** argv){
 
   std::random_device rnd;
   std::mt19937 mt(rnd());
-//  std::uniform_int_distribution<> x_px_range(1543, 1760);    // 範囲内の一様乱数
-//  std::uniform_int_distribution<> y_px_range(649, 865);    // 範囲内の一様乱数
 
-  std::uniform_int_distribution<> x_px_range(700, 800);    // 範囲内の一様乱数
-  std::uniform_int_distribution<> y_px_range(1750, 1850);    // 範囲内の一様乱数
+  // 範囲1
+//  std::uniform_int_distribution<> x_px_range(700, 800);
+//  std::uniform_int_distribution<> y_px_range(1750, 1850);
+
+  // 範囲2
+  std::uniform_int_distribution<> x_px_range(614, 819);
+  std::uniform_int_distribution<> y_px_range(1536, 1741);
+
   std::uniform_int_distribution<> th_range(0, 360);    // 範囲内の一様乱数
 
   // パーティクル位置の初期化
