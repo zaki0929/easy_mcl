@@ -609,13 +609,22 @@ int main(int argc, char** argv){
   std::random_device rnd;
   std::mt19937 mt(rnd());
 
+  int x1 = 973;
+  int x2 = 1365;
+  int y1 = 853;
+  int y2 = 1161;
+
   // 範囲1
 //  std::uniform_int_distribution<> x_px_range(700, 800);
 //  std::uniform_int_distribution<> y_px_range(1750, 1850);
 
   // 範囲2
-  std::uniform_int_distribution<> x_px_range(614, 819);
-  std::uniform_int_distribution<> y_px_range(1536, 1741);
+//  std::uniform_int_distribution<> x_px_range(614, 819);
+//  std::uniform_int_distribution<> y_px_range(1536, 1741);
+
+  // before_kidnap.pgn 用の範囲
+  std::uniform_int_distribution<> x_px_range(2047-y2, 2047-y1);
+  std::uniform_int_distribution<> y_px_range(x1, x2);
 
   std::uniform_int_distribution<> th_range(0, 360);    // 範囲内の一様乱数
 
