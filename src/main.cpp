@@ -108,8 +108,25 @@ inline int check_point_within_rect(int x1, int y1, int x2, int y2, double x, dou
   }
 }
 
+// パーティクルが地図上にあるか判断する関数
+inline int is_on_global_map(Particle p, Eigen::MatrixXd global_map, double resolution){
+  double x = p.pose(0)/resolution;
+  double y = p.pose(1)/resolution;
+
+  if(check_point_within_rect(0, 0, 2047, 2047, x, -y)){
+    if(global_map(-y, x) == 205){
+      return 0;
+    }else{
+      return 1;
+    }
+  }else{
+    return 0;
+  }
+}
+
 inline void resampling(Particle p[], Particle p_temp[], Eigen::MatrixXd global_map){
   
+  // 等間隔リサンプリング
   std::random_device rnd;
   std::mt19937 mt(rnd());
 
@@ -163,27 +180,14 @@ inline void resampling(Particle p[], Particle p_temp[], Eigen::MatrixXd global_m
     p_next[i].odom_temp += nomal_error;
 
     // グレーゾーンにパーティクルがいってしまった場合引き戻す
-    double resolution = 0.05;
-    double x = p_next[i].pose(0)/resolution;
-    double y = p_next[i].pose(1)/resolution;
-
-    ROS_INFO("%lf, %lf", -y, x);
-
-    if(check_point_within_rect(0, 0, 2047, 2047, x, -y)){
-     if(global_map(-y, x) == 205){
-       ROS_INFO("back");
-       p[i] = p_temp[i];
-     }else{
-       ROS_INFO("next");
-       p[i] = p_next[i];
-     }
+    if(is_on_global_map(p_next[i], global_map, 0.05)){
+      ROS_INFO("next");
+      p[i] = p_next[i];
     }else{
-     ROS_INFO("back");
-     p[i] = p_temp[i];
+      ROS_INFO("back");
+      p[i] = p_temp[i];
     }
-    
   }
-
 }
 
 //----------------------------------------------------------------------
@@ -609,8 +613,14 @@ int main(int argc, char** argv){
   std::random_device rnd;
   std::mt19937 mt(rnd());
 
+  // 地図を読み込みグローバルマップを生成
+  Eigen::MatrixXd global_map = gm.get_global_map();
+
+  // グローバルマップを png 形式で出力
+//  gm.export_map_image(global_map);
+
   int x1 = 973;
-  int x2 = 1365;
+  int x2 = 1331;
   int y1 = 853;
   int y2 = 1161;
 
@@ -630,15 +640,15 @@ int main(int argc, char** argv){
 
   // パーティクル位置の初期化
   for(int i=0; i<PARTICLE_NUM; i++){
-    p[i].init_pose(x_px_range(mt), y_px_range(mt), double(th_range(mt))*3.14/180);
+    int is_on_global_map_toggle = 0;
+    while(!is_on_global_map_toggle){
+      p[i].init_pose(x_px_range(mt), y_px_range(mt), double(th_range(mt))*3.14/180);
+      if(is_on_global_map(p[i], global_map, 0.05)){
+        is_on_global_map_toggle = 1;
+      }
+    }
     p_temp[i] = p[i];
   }
-
-  // 地図を読み込みグローバルマップを生成
-  Eigen::MatrixXd global_map = gm.get_global_map();
-
-  // グローバルマップを png 形式で出力
-//  gm.export_map_image(global_map);
 
   while(ros::ok()){
 
@@ -697,13 +707,13 @@ int main(int argc, char** argv){
         p_temp[i] = p[i];
       }
 
-      // 最も重みの大きいパーティクルをパブリッシュ
-      n.publish_max_weight_particle(p);
-      
-      // パーティクルをパブリッシュ
-      n.publish_particle_cloud(p);
-
     }
+
+    // 最も重みの大きいパーティクルをパブリッシュ
+    n.publish_max_weight_particle(p);
+      
+    // パーティクルをパブリッシュ
+    n.publish_particle_cloud(p);
 
     ros::spinOnce();
     rate.sleep();
