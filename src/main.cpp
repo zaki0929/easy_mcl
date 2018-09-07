@@ -15,7 +15,7 @@
 #include <thread>
 #include <vector>
 
-#define PARTICLE_NUM 100 
+#define PARTICLE_NUM 30 
 
 class GlobalMap{
 public:
