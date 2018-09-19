@@ -16,7 +16,7 @@
 #include <thread>
 #include <vector>
 
-#define PARTICLE_NUM 1 
+#define PARTICLE_NUM 10
 
 class GlobalMap{
 public:
@@ -221,9 +221,11 @@ Eigen::MatrixXd GlobalMap::get_global_map(){
   //cv::eigen2cv(img_e, img);
   //cv::GaussianBlur(img, img, cv::Size(5, 5), 0);
   //cv::cv2eigen(img, img_e);
-  img_e = blur_map(img_e, 0, 240);
-  //img_e = blur_map(img_e, 10, 20);
-  //img_e = blur_map(img_e, 20, 30);
+  img_e = blur_map(img_e, 0, 20);
+  img_e = blur_map(img_e, 20, 40);
+  img_e = blur_map(img_e, 40, 60);
+  img_e = blur_map(img_e, 60, 80);
+  img_e = blur_map(img_e, 80, 100);
 
   return img_e;
 }
@@ -249,28 +251,28 @@ Eigen::MatrixXd GlobalMap::blur_map(Eigen::MatrixXd img_e, int target, int val){
   for(int i=1; i<img_e.rows()-1; i++){
     for(int j=1; j<img_e.cols()-1; j++){
       if(img_e(j, i) == target){
-        if(img_e(j+1, i-1) != target){
+        if(img_e(j+1, i-1) > target){
           img_e(j+1, i-1) = val;
         }
-        if(img_e(j+1, i) != target){
+        if(img_e(j+1, i) > target){
           img_e(j+1, i) = val;
         }
-        if(img_e(j+1, i+1) != target){
+        if(img_e(j+1, i+1) > target){
           img_e(j+1, i+1) = val;
         }
-        if(img_e(j, i-1) != target){
+        if(img_e(j, i-1) > target){
           img_e(j, i-1) = val;
         }
-        if(img_e(j, i+1) != target){
+        if(img_e(j, i+1) > target){
           img_e(j, i+1) = val;
         }
-        if(img_e(j-1, i-1) != target){
+        if(img_e(j-1, i-1) > target){
           img_e(j-1, i-1) = val;
         }
-        if(img_e(j-1, i) != target){
+        if(img_e(j-1, i) > target){
           img_e(j-1, i) = val;
         }
-        if(img_e(j-1, i+1) != target){
+        if(img_e(j-1, i+1) > target){
           img_e(j-1, i+1) = val;
         }
       }
@@ -481,6 +483,21 @@ void Particle::get_global_map(Eigen::MatrixXd img_e){
         if(img_e(int(-y-(size_l/2)+j), int(x-(size_l/2)+i)) == 0){
           cut_img_e(j, i) = 0;
         }
+        if(img_e(int(-y-(size_l/2)+j), int(x-(size_l/2)+i)) == 20){
+          cut_img_e(j, i) = 20;
+        }
+        if(img_e(int(-y-(size_l/2)+j), int(x-(size_l/2)+i)) == 40){
+          cut_img_e(j, i) = 40;
+        }
+        if(img_e(int(-y-(size_l/2)+j), int(x-(size_l/2)+i)) == 60){
+          cut_img_e(j, i) = 60;
+        }
+        if(img_e(int(-y-(size_l/2)+j), int(x-(size_l/2)+i)) == 80){
+          cut_img_e(j, i) = 80;
+        }
+        if(img_e(int(-y-(size_l/2)+j), int(x-(size_l/2)+i)) == 100){
+          cut_img_e(j, i) = 100;
+        }
         if(img_e(int(-y-(size_l/2)+j), int(x-(size_l/2)+i)) == 205){
           cut_img_e(j, i) = 205;
         }
@@ -495,7 +512,22 @@ void Particle::calc_weight(){
   for(int j=0; j<local_map.cols(); j++){
     for(int i=0; i<local_map.rows(); i++){
       if(local_map(j, i) == 0 && global_map(j, i) == 0){
-        weight++;
+        weight += 12;
+      }
+      if(local_map(j, i) == 0 && global_map(j, i) == 20){
+        weight += 10;
+      }
+      if(local_map(j, i) == 0 && global_map(j, i) == 40){
+        weight += 8;
+      }
+      if(local_map(j, i) == 0 && global_map(j, i) == 60){
+        weight += 6;
+      }
+      if(local_map(j, i) == 0 && global_map(j, i) == 80){
+        weight += 4;
+      }
+      if(local_map(j, i) == 0 && global_map(j, i) == 100){
+        weight += 2;
       }
     }
   }
