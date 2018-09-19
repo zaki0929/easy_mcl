@@ -9,13 +9,14 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/core/eigen.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 #include <cstdlib>
 #include <cmath>
 #include <random>
 #include <thread>
 #include <vector>
 
-#define PARTICLE_NUM 30 
+#define PARTICLE_NUM 1 
 
 class GlobalMap{
 public:
@@ -23,6 +24,7 @@ public:
   ~GlobalMap();
   Eigen::MatrixXd get_global_map();
   Eigen::MatrixXd binarize_map(Eigen::MatrixXd img_e);
+  Eigen::MatrixXd blur_map(Eigen::MatrixXd img_e, int target, int val);
   void export_map_image(Eigen::MatrixXd img_e);
 
 private:
@@ -215,6 +217,14 @@ Eigen::MatrixXd GlobalMap::get_global_map(){
   // 地図データを二値化する
   img_e = binarize_map(img_e);
 
+  // 地図をぼかす
+  //cv::eigen2cv(img_e, img);
+  //cv::GaussianBlur(img, img, cv::Size(5, 5), 0);
+  //cv::cv2eigen(img, img_e);
+  img_e = blur_map(img_e, 0, 240);
+  //img_e = blur_map(img_e, 10, 20);
+  //img_e = blur_map(img_e, 20, 30);
+
   return img_e;
 }
 
@@ -232,6 +242,41 @@ Eigen::MatrixXd GlobalMap::binarize_map(Eigen::MatrixXd img_e){
     }
   }
   ROS_INFO("global map: binarized");
+  return img_e;
+}
+
+Eigen::MatrixXd GlobalMap::blur_map(Eigen::MatrixXd img_e, int target, int val){
+  for(int i=1; i<img_e.rows()-1; i++){
+    for(int j=1; j<img_e.cols()-1; j++){
+      if(img_e(j, i) == target){
+        if(img_e(j+1, i-1) != target){
+          img_e(j+1, i-1) = val;
+        }
+        if(img_e(j+1, i) != target){
+          img_e(j+1, i) = val;
+        }
+        if(img_e(j+1, i+1) != target){
+          img_e(j+1, i+1) = val;
+        }
+        if(img_e(j, i-1) != target){
+          img_e(j, i-1) = val;
+        }
+        if(img_e(j, i+1) != target){
+          img_e(j, i+1) = val;
+        }
+        if(img_e(j-1, i-1) != target){
+          img_e(j-1, i-1) = val;
+        }
+        if(img_e(j-1, i) != target){
+          img_e(j-1, i) = val;
+        }
+        if(img_e(j-1, i+1) != target){
+          img_e(j-1, i+1) = val;
+        }
+      }
+    }
+  }
+  ROS_INFO("global map: blur");
   return img_e;
 }
 
@@ -700,8 +745,9 @@ int main(int argc, char** argv){
         t.join();
       }
 
-      //lm.export_map_image(p[0].global_map);
-      //lm.export_map_image(p[0].local_map);
+      gm.export_map_image(p[0].global_map);
+      lm.export_map_image(p[0].local_map);
+
       resampling(p, p_temp, global_map);
       for(int i=0; i<PARTICLE_NUM; i++){
         p_temp[i] = p[i];
