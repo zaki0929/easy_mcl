@@ -16,7 +16,7 @@
 #include <thread>
 #include <vector>
 
-#define PARTICLE_NUM 100
+#define PARTICLE_NUM 200
 
 class GlobalMap{
 public:
@@ -116,7 +116,7 @@ inline int is_on_global_map(Particle p, Eigen::MatrixXd global_map, double resol
   double y = p.pose(1)/resolution;
 
   if(check_point_within_rect(0, 0, 2047, 2047, x, -y)){
-    if(global_map(-y, x) == 255){
+    if(global_map(-y, x) != 205 && global_map(-y, x) != 0){
       return 1;
     }else{
       return 0;
@@ -239,6 +239,11 @@ Eigen::MatrixXd GlobalMap::get_global_map(){
   img_e = blur_map(img_e, 40, 60);
   img_e = blur_map(img_e, 60, 80);
   img_e = blur_map(img_e, 80, 100);
+  img_e = blur_map(img_e, 100, 120);
+  img_e = blur_map(img_e, 120, 140);
+  img_e = blur_map(img_e, 140, 160);
+  img_e = blur_map(img_e, 160, 180);
+  img_e = blur_map(img_e, 180, 200);
 
   return img_e;
 }
@@ -511,6 +516,21 @@ void Particle::get_global_map(Eigen::MatrixXd img_e){
         if(img_e(int(-y-(size_l/2)+j), int(x-(size_l/2)+i)) == 100){
           cut_img_e(j, i) = 100;
         }
+        if(img_e(int(-y-(size_l/2)+j), int(x-(size_l/2)+i)) == 120){
+          cut_img_e(j, i) = 120;
+        }
+        if(img_e(int(-y-(size_l/2)+j), int(x-(size_l/2)+i)) == 140){
+          cut_img_e(j, i) = 140;
+        }
+        if(img_e(int(-y-(size_l/2)+j), int(x-(size_l/2)+i)) == 160){
+          cut_img_e(j, i) = 160;
+        }
+        if(img_e(int(-y-(size_l/2)+j), int(x-(size_l/2)+i)) == 180){
+          cut_img_e(j, i) = 180;
+        }
+        if(img_e(int(-y-(size_l/2)+j), int(x-(size_l/2)+i)) == 200){
+          cut_img_e(j, i) = 200;
+        }
         if(img_e(int(-y-(size_l/2)+j), int(x-(size_l/2)+i)) == 205){
           cut_img_e(j, i) = 205;
         }
@@ -525,21 +545,36 @@ void Particle::calc_weight(){
   for(int j=0; j<local_map.cols(); j++){
     for(int i=0; i<local_map.rows(); i++){
       if(local_map(j, i) == 0 && global_map(j, i) == 0){
-        weight += 12;
+        weight += 22;
       }
       if(local_map(j, i) == 0 && global_map(j, i) == 20){
-        weight += 10;
+        weight += 20;
       }
       if(local_map(j, i) == 0 && global_map(j, i) == 40){
-        weight += 8;
+        weight += 18;
       }
       if(local_map(j, i) == 0 && global_map(j, i) == 60){
-        weight += 6;
+        weight += 16;
       }
       if(local_map(j, i) == 0 && global_map(j, i) == 80){
-        weight += 4;
+        weight += 14;
       }
       if(local_map(j, i) == 0 && global_map(j, i) == 100){
+        weight += 12;
+      }
+      if(local_map(j, i) == 0 && global_map(j, i) == 120){
+        weight += 10;
+      }
+      if(local_map(j, i) == 0 && global_map(j, i) == 140){
+        weight += 8;
+      }
+      if(local_map(j, i) == 0 && global_map(j, i) == 160){
+        weight += 6;
+      }
+      if(local_map(j, i) == 0 && global_map(j, i) == 180){
+        weight += 4;
+      }
+      if(local_map(j, i) == 0 && global_map(j, i) == 200){
         weight += 2;
       }
     }
