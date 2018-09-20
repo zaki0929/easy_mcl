@@ -192,6 +192,19 @@ inline void resampling(Particle p[], Particle p_temp[], Eigen::MatrixXd global_m
   }
 }
 
+inline Particle debug_max_weight_particle(Particle p[]){
+  Particle max_weight_particle = p[0];
+  int max_weight = p[0].weight;
+
+  // 最も重みが大きいパーティクルをさがす
+  for(int i=0; i<PARTICLE_NUM; i++){
+    if(p[i].weight > max_weight){
+      max_weight_particle = p[i];
+      max_weight = p[i].weight;
+    }
+  }
+  return max_weight_particle;
+}
 //----------------------------------------------------------------------
 
 GlobalMap::GlobalMap(){
@@ -777,15 +790,17 @@ int main(int argc, char** argv){
         t.join();
       }
 
-      gm.export_map_image(p[0].global_map);
-      lm.export_map_image(p[0].local_map);
-
       resampling(p, p_temp, global_map);
       for(int i=0; i<PARTICLE_NUM; i++){
         p_temp[i] = p[i];
       }
 
     }
+
+    // Debug
+    Particle max_weight_particle = debug_max_weight_particle(p);
+    gm.export_map_image(max_weight_particle.global_map);
+    lm.export_map_image(max_weight_particle.local_map);
 
     // 最も重みの大きいパーティクルをパブリッシュ
     n.publish_max_weight_particle(p);
