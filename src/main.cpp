@@ -16,7 +16,7 @@
 #include <thread>
 #include <vector>
 
-#define PARTICLE_NUM 10
+#define PARTICLE_NUM 100
 
 class GlobalMap{
 public:
@@ -790,20 +790,19 @@ int main(int argc, char** argv){
         t.join();
       }
 
+      // Debug
+      Particle max_weight_particle = debug_max_weight_particle(p);
+      gm.export_map_image(max_weight_particle.global_map);
+      lm.export_map_image(max_weight_particle.local_map);
+
+      // 最も重みの大きいパーティクルをパブリッシュ
+      n.publish_max_weight_particle(p);
+
       resampling(p, p_temp, global_map);
       for(int i=0; i<PARTICLE_NUM; i++){
         p_temp[i] = p[i];
       }
-
     }
-
-    // Debug
-    Particle max_weight_particle = debug_max_weight_particle(p);
-    gm.export_map_image(max_weight_particle.global_map);
-    lm.export_map_image(max_weight_particle.local_map);
-
-    // 最も重みの大きいパーティクルをパブリッシュ
-    n.publish_max_weight_particle(p);
       
     // パーティクルをパブリッシュ
     n.publish_particle_cloud(p);
