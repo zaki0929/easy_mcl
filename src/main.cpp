@@ -116,10 +116,10 @@ inline int is_on_global_map(Particle p, Eigen::MatrixXd global_map, double resol
   double y = p.pose(1)/resolution;
 
   if(check_point_within_rect(0, 0, 2047, 2047, x, -y)){
-    if(global_map(-y, x) == 205){
-      return 0;
-    }else{
+    if(global_map(-y, x) == 255){
       return 1;
+    }else{
+      return 0;
     }
   }else{
     return 0;
