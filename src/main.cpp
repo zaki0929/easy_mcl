@@ -16,7 +16,7 @@
 #include <thread>
 #include <vector>
 
-#define PARTICLE_NUM 200
+#define PARTICLE_NUM 100
 
 class GlobalMap{
 public:
@@ -137,12 +137,19 @@ inline void resampling(Particle p[], Particle p_temp[], Eigen::MatrixXd global_m
     weight_total += p[i].weight;
   }
 
+  int random_particle_num;
+  int resampling_particle_num;
+  if(PARTICLE_NUM >= 10){
+    random_particle_num = int(PARTICLE_NUM / 10);
+    resampling_particle_num = PARTICLE_NUM - random_particle_num;
+  }
+
   std::uniform_int_distribution<> rand1(0, p[0].weight);    // 範囲内の一様乱数
-  double M = double(weight_total) / PARTICLE_NUM;
+  double M = double(weight_total / resampling_particle_num);
   int r = rand1(mt);
 
   std::vector<int> point;
-  for (int i=0; i<PARTICLE_NUM; i++){
+  for (int i=0; i<resampling_particle_num; i++){
     point.push_back(int(r+(M*i)));
   }
 
@@ -151,7 +158,7 @@ inline void resampling(Particle p[], Particle p_temp[], Eigen::MatrixXd global_m
   int count = 0;
   int end_pick = 0;
   
-  for(int i=0; i<PARTICLE_NUM; i++){
+  for(int i=0; i<resampling_particle_num; i++){
     int weight_sum_temp = weight_sum; 
     weight_sum += p[i].weight;
     while(point[count] >= weight_sum_temp && point[count] < weight_sum && end_pick == 0){
@@ -169,7 +176,7 @@ inline void resampling(Particle p[], Particle p_temp[], Eigen::MatrixXd global_m
   // パーティクルの位置を少しずらす
   std::normal_distribution<> norm1(0, 0.2);    // 正規分布: 平均0, 分散0.2
   std::normal_distribution<> norm2(0, 0.01);    // 正規分布: 平均0, 分散0.01
-  for(int i=0; i<PARTICLE_NUM; i++){
+  for(int i=0; i<resampling_particle_num; i++){
     Eigen::Vector3d nomal_error;
     nomal_error(0) = norm1(mt);
     nomal_error(1) = norm1(mt);
@@ -188,6 +195,26 @@ inline void resampling(Particle p[], Particle p_temp[], Eigen::MatrixXd global_m
     }else{
       ROS_INFO("back");
       p[i] = p_temp[i];
+    }
+  }
+
+  // ランダムパーティクルの注入
+  // before_kidnap.pgn 用の範囲
+  int x1 = 973;
+  int x2 = 1331;
+  int y1 = 853;
+  int y2 = 1161;
+  std::uniform_int_distribution<> x_px_range(2047-y2, 2047-y1);
+  std::uniform_int_distribution<> y_px_range(x1, x2);
+  std::uniform_int_distribution<> th_range(0, 360);
+
+  for(int i=0; i<random_particle_num; i++){
+    int is_on_global_map_toggle = 0;
+    while(!is_on_global_map_toggle){
+      p[resampling_particle_num + i].init_pose(x_px_range(mt), y_px_range(mt), double(th_range(mt))*3.14/180);
+      if(is_on_global_map(p[resampling_particle_num + i], global_map, 0.05)){
+        is_on_global_map_toggle = 1;
+      }
     }
   }
 }
