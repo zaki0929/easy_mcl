@@ -231,9 +231,6 @@ Eigen::MatrixXd GlobalMap::get_global_map(){
   img_e = binarize_map(img_e);
 
   // 地図をぼかす
-  //cv::eigen2cv(img_e, img);
-  //cv::GaussianBlur(img, img, cv::Size(5, 5), 0);
-  //cv::cv2eigen(img, img_e);
   img_e = blur_map(img_e, 0, 20);
   img_e = blur_map(img_e, 20, 40);
   img_e = blur_map(img_e, 40, 60);
@@ -355,20 +352,20 @@ Particle::Particle(){
   odom_temp = set_pose(0, 0, 0);
   homepath = std::getenv("HOME");
 
-  // 地図の読み込んでサイズを取得
-//  cv::Mat img = cv::imread(homepath + "/catkin_ws/src/easy_mcl/map/map.pgm", 0);
-//  if(img.empty()){
-//    ROS_ERROR("particle: unable to open the map");
-//  }else{
-//    ROS_INFO("particle: map loaded");
-//  }
-//  size_x = img.rows;
-//  size_y = img.cols;
-//  ROS_INFO("x: %d, y: %d", size_x, size_y);
+  //// 地図の読み込んでサイズを取得
+  //cv::Mat img = cv::imread(homepath + "/catkin_ws/src/easy_mcl/map/map.pgm", 0);
+  //if(img.empty()){
+  //  ROS_ERROR("particle: unable to open the map");
+  //}else{
+  //  ROS_INFO("particle: map loaded");
+  //}
+  //size_x = img.rows;
+  //size_y = img.cols;
+  //ROS_INFO("x: %d, y: %d", size_x, size_y);
 
-  // 軌跡をまっさらにする
-//  path_map = Eigen::MatrixXd::Ones(size_y, size_x); 
-//  path_map *= 255;
+  //// 軌跡をまっさらにする
+  //path_map = Eigen::MatrixXd::Ones(size_y, size_x); 
+  //path_map *= 255;
 }
 
 Particle::~Particle(){}
@@ -675,53 +672,8 @@ void Node::publish_max_weight_particle(Particle p[]){
   pose_array.poses[0].orientation.w = q.w();
   
   max_wight_pose_pub.publish(pose_array);
-
-//  static tf::TransformBroadcaster br;
-//  tf::Transform transform;
-//  transform.setOrigin(tf::Vector3(max_weight_pose(0), max_weight_pose(1), 0.0));
-//  transform.setRotation(q);
-//  br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "EstimatedParticle"));
-
 }
 
-//void Node::publish_max_weight_particle(Particle p[]){
-//  geometry_msgs::Pose pose;
-//
-//  // 初期化
-//  Eigen::Vector3d max_weight_pose = p[0].pose;
-//  int max_weight = p[0].weight;
-//
-//  // 最も重みが大きいパーティクルの姿勢を取得
-//  for(int i=0; i<PARTICLE_NUM; i++){
-//    if(p[i].weight > max_weight){
-//      max_weight = p[i].weight;
-//      max_weight_pose(0) = p[i].pose(0);
-//      max_weight_pose(1) = p[i].pose(1);
-//      max_weight_pose(2) = p[i].pose(2);
-//    }
-//  }
-//
-//  // ロールピッチヨー角からクォータニオンを取得
-//  tf::Quaternion q = tf::createQuaternionFromRPY(0, 0, max_weight_pose(2));
-//  
-//  pose.position.x = max_weight_pose(0); 
-//  pose.position.y = max_weight_pose(1);
-//  pose.position.z = 0;
-//  
-//  pose.orientation.x = q.x();
-//  pose.orientation.y = q.y();
-//  pose.orientation.z = q.z();
-//  pose.orientation.w = q.w();
-//  
-//  max_wight_pose_pub.publish(pose);
-//
-////  static tf::TransformBroadcaster br;
-////  tf::Transform transform;
-////  transform.setOrigin(tf::Vector3(max_weight_pose(0), max_weight_pose(1), 0.0));
-////  transform.setRotation(q);
-////  br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "map", "EstimatedParticle"));
-//
-//}
 //----------------------------------------------------------------------
 
 int main(int argc, char** argv){
@@ -741,23 +693,15 @@ int main(int argc, char** argv){
   // 地図を読み込みグローバルマップを生成
   Eigen::MatrixXd global_map = gm.get_global_map();
 
-  // グローバルマップを png 形式で出力
-//  gm.export_map_image(global_map);
+  //// グローバルマップを png 形式で出力
+  //gm.export_map_image(global_map);
 
+  // before_kidnap.pgn 用の範囲
   int x1 = 973;
   int x2 = 1331;
   int y1 = 853;
   int y2 = 1161;
 
-  // 範囲1
-//  std::uniform_int_distribution<> x_px_range(700, 800);
-//  std::uniform_int_distribution<> y_px_range(1750, 1850);
-
-  // 範囲2
-//  std::uniform_int_distribution<> x_px_range(614, 819);
-//  std::uniform_int_distribution<> y_px_range(1536, 1741);
-
-  // before_kidnap.pgn 用の範囲
   std::uniform_int_distribution<> x_px_range(2047-y2, 2047-y1);
   std::uniform_int_distribution<> y_px_range(x1, x2);
 
@@ -781,22 +725,16 @@ int main(int argc, char** argv){
       // scan トピックからローカルマップを生成
       lm.get_scan(n.scan);
 
-      //p[6].get_local_map(local_map);
-      //lm.export_map_image(p[6].local_map);
-      
-      //p[6].get_global_map(global_map);
-      //lm.export_map_image(p[6].global_map);
-
-      // ローカルマップを png 形式で出力
+      //// ローカルマップを png 形式で出力
       //lm.export_map_image(local_map);
     }else{
       ROS_INFO("waiting scan topic...");
     }
 
     if(n.odom_toggle){
-      // odom トピックから, オドメトリをプロットした地図を生成し, png 形式で出力
-//      Eigen::MatrixXd path_map = p->get_path_map();
-//      p->export_map_image(path_map);
+      //// odom トピックから, オドメトリをプロットした地図を生成し, png 形式で出力
+      //Eigen::MatrixXd path_map = p->get_path_map();
+      //p->export_map_image(path_map);
 
       // odom トピックから, パーティクルの位置姿勢を計算しパブリッシュ
       for(int i=0; i<PARTICLE_NUM; i++){
