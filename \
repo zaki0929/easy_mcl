@@ -18,11 +18,6 @@
 
 #define PARTICLE_NUM 200
 
-#define RANGE_X1 970
-#define RANGE_Y1 850
-#define RANGE_X2 1330
-#define RANGE_Y2 1250
-
 class GlobalMap{
 public:
   GlobalMap();
@@ -145,7 +140,7 @@ inline void resampling(Particle p[], Particle p_temp[], Eigen::MatrixXd global_m
   int random_particle_num;
   int resampling_particle_num;
   if(PARTICLE_NUM >= 10){
-    random_particle_num = int(PARTICLE_NUM * 0.1);
+    random_particle_num = int(PARTICLE_NUM / 10);
     resampling_particle_num = PARTICLE_NUM - random_particle_num;
   }
 
@@ -204,8 +199,13 @@ inline void resampling(Particle p[], Particle p_temp[], Eigen::MatrixXd global_m
   }
 
   // ランダムパーティクルの注入
-  std::uniform_int_distribution<> x_px_range(2047-RANGE_Y2, 2047-RANGE_Y1);
-  std::uniform_int_distribution<> y_px_range(RANGE_X1, RANGE_X2);
+  // before_kidnap.pgn 用の範囲
+  int x1 = 973;
+  int x2 = 1331;
+  int y1 = 853;
+  int y2 = 1161;
+  std::uniform_int_distribution<> x_px_range(2047-y2, 2047-y1);
+  std::uniform_int_distribution<> y_px_range(x1, x2);
   std::uniform_int_distribution<> th_range(0, 360);
 
   for(int i=0; i<random_particle_num; i++){
@@ -723,9 +723,16 @@ int main(int argc, char** argv){
   //// グローバルマップを png 形式で出力
   //gm.export_map_image(global_map);
 
-  std::uniform_int_distribution<> x_px_range(2047-RANGE_Y2, 2047-RANGE_Y1);
-  std::uniform_int_distribution<> y_px_range(RANGE_X1, RANGE_X2);
-  std::uniform_int_distribution<> th_range(0, 360);
+  // before_kidnap.pgn 用の範囲
+  int x1 = 973;
+  int x2 = 1331;
+  int y1 = 853;
+  int y2 = 1161;
+
+  std::uniform_int_distribution<> x_px_range(2047-y2, 2047-y1);
+  std::uniform_int_distribution<> y_px_range(x1, x2);
+
+  std::uniform_int_distribution<> th_range(0, 360);    // 範囲内の一様乱数
 
   // パーティクル位置の初期化
   for(int i=0; i<PARTICLE_NUM; i++){
