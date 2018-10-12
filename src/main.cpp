@@ -17,6 +17,7 @@
 #include <vector>
 
 #define PARTICLE_NUM 200
+#define RATE_OF_RANDOM_PARTICLE 0.1 
 
 #define RANGE_X1 970
 #define RANGE_Y1 850
@@ -145,7 +146,7 @@ inline void resampling(Particle p[], Particle p_temp[], Eigen::MatrixXd global_m
   int random_particle_num;
   int resampling_particle_num;
   if(PARTICLE_NUM >= 10){
-    random_particle_num = int(PARTICLE_NUM * 0.1);
+    random_particle_num = int(PARTICLE_NUM * RATE_OF_RANDOM_PARTICLE);
     resampling_particle_num = PARTICLE_NUM - random_particle_num;
   }
 
