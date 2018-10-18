@@ -108,6 +108,35 @@ inline Eigen::Vector3d set_pose(double x, double y, double th){
   return vec;
 }
 
+// 2本の線分が交わるかどうかを判定する関数
+inline int check_intersection(int ax, int ay, int bx, int by, int cx, int cy, int dx, int dy){
+  double ta = (cx - dx) * (ay - cy) + (cy - dy) * (cx - ax);
+  double tb = (cx - dx) * (by - cy) + (cy - dy) * (cx - bx);
+  double tc = (ax - bx) * (cy - ay) + (ay - by) * (ax - cx);
+  double td = (ax - bx) * (dy - ay) + (ay - by) * (ax - dx);
+
+  if(tc * td <= 0 && ta * tb <= 0){
+    if((ay - by) * (cx - dx) == (cy - dy) * (ax - bx)){
+      return 0;
+    }else{
+      return 1;
+    }
+  }else{
+    return 0;
+  }
+}
+
+// 矩形と線分が交わるかどうかを判定する関数
+inline int check_intersection_rect_line(int x1, int y1, int x2, int y2, int ax, int ay, int bx, int by){
+  if(check_intersection(x1, y1, x1, y2, ax, ay, bx, by) || check_intersection(x1, y2, x2, y2, ax, ay, bx, by) || check_intersection(x2, y2, x2, y1, ax, ay, bx, by) || check_intersection(x2, y1, x1, y1, ax, ay, bx, by)){
+    return 1;
+  }else{
+    return 0;
+  }
+}
+
+
+// 点の座標が矩形の中にあるか判断する関数
 inline int check_point_within_rect(int x1, int y1, int x2, int y2, double x, double y){
   if(x >= (double)x1 && x <= (double)x2 && y >= (double)y1 && y <= (double)y2){
     return 1;
@@ -348,7 +377,8 @@ void LocalMap::get_scan(sensor_msgs::LaserScan::ConstPtr _scan){
 
 Eigen::MatrixXd LocalMap::get_local_map(){
   // 全ての要素の値が255でローカルマップサイズの行列を取得
-  Eigen::MatrixXd img_e = Eigen::MatrixXd::Ones(size, size)*255; 
+  //Eigen::MatrixXd img_e = Eigen::MatrixXd::Ones(size, size)*255; 
+  Eigen::MatrixXd img_e = Eigen::MatrixXd::Ones(size, size)*205; 
 
   for(double th=scan->angle_min, i=0; th<=scan->angle_max; th+=scan->angle_increment, i++){
     if(scan->ranges[i] > 0){
@@ -356,6 +386,18 @@ Eigen::MatrixXd LocalMap::get_local_map(){
       int y = int(scan->ranges[i]*std::sin(th)/0.05);
 
       img_e(int(size/2)-y, int(size/2)+x) = 0;
+
+      if(int(i)%10 == 1){
+        for(int k=0; k<240; k++){
+          for(int j=0; j<240; j++){
+            //if(check_intersection_rect_line(j, i, j+1, i+1, int(size/2), int(size/2), int(size/2)+x, int(size/2)-y)){
+            ROS_INFO("%lf, %d, %d", i, k, j);
+            if(check_intersection_rect_line(-int(size/2)+j, int(size/2)-k, -int(size/2)+j+1, int(size/2)-k-1, 0, 0, x, y)){
+              img_e(k, j) = 255;
+            }
+          }
+        }
+      }
     }
   }
   
@@ -469,6 +511,8 @@ void Particle::get_local_map(Eigen::MatrixXd img_e){
 
   std::vector<double> data_x;
   std::vector<double> data_y;
+  std::vector<double> data2_x;
+  std::vector<double> data2_y;
 
   for(int j=0; j<size; j++){
     for(int i=0; i<size; i++){
@@ -476,28 +520,50 @@ void Particle::get_local_map(Eigen::MatrixXd img_e){
         data_x.push_back(i-(size/2)+0.5);
         data_y.push_back((size/2)-j-0.5);
       }
+      if(img_e(j, i) == 255){
+        data2_x.push_back(i-(size/2)+0.5);
+        data2_y.push_back((size/2)-j-0.5);
+      }
     }
   }
 
   std::vector<double> rotated_data_x;
   std::vector<double> rotated_data_y;
+  std::vector<double> rotated_data2_x;
+  std::vector<double> rotated_data2_y;
 
   for(int i=0; i<data_x.size(); i++){
     rotated_data_x.push_back((data_x[i]*std::cos(pose(2))) - (data_y[i]*std::sin(pose(2))));
     rotated_data_y.push_back((data_x[i]*std::sin(pose(2))) + (data_y[i]*std::cos(pose(2))));
   }
+  for(int i=0; i<data2_x.size(); i++){
+    rotated_data2_x.push_back((data2_x[i]*std::cos(pose(2))) - (data2_y[i]*std::sin(pose(2))));
+    rotated_data2_y.push_back((data2_x[i]*std::sin(pose(2))) + (data2_y[i]*std::cos(pose(2))));
+  }
 
-  Eigen::MatrixXd rotated_img_e = Eigen::MatrixXd::Ones(size, size)*255; 
+  //Eigen::MatrixXd rotated_img_e = Eigen::MatrixXd::Ones(size, size)*255; 
+  Eigen::MatrixXd rotated_img_e = Eigen::MatrixXd::Ones(size, size)*205;
 
   for(int j=0; j<size; j++){
     for(int i=0; i<size; i++){
       int plot_toggle = 0;
+      int plot_toggle2 = 0;
       for(int k=0; k<rotated_data_x.size(); k++){
         double x_point = rotated_data_x[k] + (size/2);
         double y_point = -rotated_data_y[k] + (size/2);
         if(check_point_within_rect(i, j, i+1, j+1, x_point, y_point)){
           plot_toggle = 1;
         }
+      }
+      for(int k=0; k<rotated_data2_x.size(); k++){
+        double x_point2 = rotated_data2_x[k] + (size/2);
+        double y_point2 = -rotated_data2_y[k] + (size/2);
+        if(check_point_within_rect(i, j, i+1, j+1, x_point2, y_point2)){
+          plot_toggle2 = 1;
+        }
+      }
+      if(plot_toggle2){
+        rotated_img_e(j, i) = 255;
       }
       if(plot_toggle){
         rotated_img_e(j, i) = 0;
