@@ -298,7 +298,6 @@ inline void precasting(double scan_angle_min, double scan_angle_max, double scan
     std::string file_format = ".csv";
     std::string file_info = file_location + file_name + file_format;
 
-    ROS_INFO("precasting: %d", scan_index);
     std::ofstream ofs(file_info.c_str());
     if(!ofs){
       ROS_INFO("precasting: failed");
@@ -314,21 +313,21 @@ inline void precasting(double scan_angle_min, double scan_angle_max, double scan
           r.col = j;
           r.distance = sqrt(pow(-int(size/2)+j, 2) + pow(int(size/2)-k, 2));
           records.push_back(r);
-
-	      //std::string record = std::to_string(k) + "," + std::to_string(j) + "," + std::to_string(distance);
-          //ofs << record.c_str() << "\n" << std::endl;
         }
       }
     }
+    
+    // sort by distance
     stable_sort(records.begin(), records.end(), &cust_predicate);
 
     for(record r : records){
-	  std::string record = std::to_string(r.row) + "," + std::to_string(r.col) + "," + std::to_string(r.distance);
-      ofs << record.c_str() << "\n" << std::endl;
+      std::string record_str = std::to_string(r.row) + "," + std::to_string(r.col) + "," + std::to_string(r.distance);
+      ofs << record_str.c_str() << std::endl;
     }
    
     scan_index++;
   }
+  ROS_INFO("precasting: finish");
 }
 
 //----------------------------------------------------------------------
