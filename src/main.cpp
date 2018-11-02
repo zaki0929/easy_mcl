@@ -272,33 +272,38 @@ inline Particle debug_max_weight_particle(Particle p[]){
 inline void precasting(double scan_angle_min, double scan_angle_max, double scan_angle_increment){
   ROS_INFO("precasting: start");
   const int size = 240;
-  for(double th=scan_angle_min, i=0; th<=scan_angle_max; th+=scan_angle_increment, i++){
+  int scan_index=0;
+  for(double th=scan_angle_min; th<=scan_angle_max; th+=scan_angle_increment){
     int x = int(SCAN_RANGE_MAX*std::cos(th)/0.05);
     int y = int(SCAN_RANGE_MAX*std::sin(th)/0.05);
 
-    std::string file_name = std::to_string(i);
-    std::string file_location = "./resources/precasting/";
+    std::string homepath = std::getenv("HOME");
+    std::string file_location = homepath + "/catkin_ws/src/easy_mcl/resources/precasting/";
+    std::string file_name = std::to_string(scan_index);
     std::string file_format = ".csv";
-    std::string file_info = file_name + file_location + file_format;
+    std::string file_info = file_location + file_name + file_format;
 
-    ROS_INFO("precasting: %s", file_info.c_str);
+    ROS_INFO("precasting: %d", scan_index);
     std::ofstream ofs(file_info.c_str());
     if(!ofs){
+      ROS_INFO("precasting: failed");
       return;
     }
 
-    if(int(i)%10 == 1){
-      for(int k=0; k<size; k++){
-        for(int j=0; j<size; j++){
-          if(check_intersection_rect_line(-int(size/2)+j, int(size/2)-k, -int(size/2)+j+1, int(size/2)-k-1, 0, 0, x, y)){
-            double distance = sqrt(pow(-int(size/2)+j, 2) + pow(int(size/2)-k, 2));
-            ofs << (char)k << "," << (char)j << "," << sqrt << "\n" << std::endl;
+    for(int k=0; k<size; k++){
+      for(int j=0; j<size; j++){
+        if(check_intersection_rect_line(-int(size/2)+j, int(size/2)-k, -int(size/2)+j+1, int(size/2)-k-1, 0, 0, x, y)){
+          double distance = sqrt(pow(-int(size/2)+j, 2) + pow(int(size/2)-k, 2));
 
-            //img_e(k, j) = 255;
-          }
+	  std::string record = std::to_string(k) + "," + std::to_string(j) + "," + std::to_string(distance);
+          ofs << record.c_str() << "\n" << std::endl;
+
+          //img_e(k, j) = 255;
         }
       }
     }
+   
+    scan_index++;
   }
 }
 
@@ -852,6 +857,10 @@ int main(int argc, char** argv){
       // scan トピックからローカルマップを生成
       lm.get_scan(n.scan);
 
+      if(PRECASTING){
+        precasting(lm.scan->angle_min, lm.scan->angle_max, lm.scan->angle_increment);
+      }
+
       //// ローカルマップを png 形式で出力
       //lm.export_map_image(local_map);
     }else{
@@ -873,7 +882,6 @@ int main(int argc, char** argv){
     }
 
     if(n.scan_toggle && n.odom_toggle){
-      precasting(lm.scan->angle_min, lm.scan->angle_max, lm.scan->angle_increment);
       Eigen::MatrixXd local_map = lm.get_local_map();
 
       // パーティクルの重みつけを並列処理で行う
