@@ -18,6 +18,7 @@
 #include <iostream>
 #include <fstream>
 #include <string.h>
+#include <algorithm>
 
 #define PRECASTING 1  //true
 #define SCAN_RANGE_MAX 5.6
@@ -269,6 +270,20 @@ inline Particle debug_max_weight_particle(Particle p[]){
   return max_weight_particle;
 }
 
+struct record{
+  int row;
+  int col;
+  double distance;
+};
+
+inline bool cust_predicate(record elem1, record elem2){
+  if(elem1.distance < elem2.distance){
+    return true;
+  }else{
+    return false;
+  }
+}
+
 inline void precasting(double scan_angle_min, double scan_angle_max, double scan_angle_increment){
   ROS_INFO("precasting: start");
   const int size = 240;
@@ -290,17 +305,26 @@ inline void precasting(double scan_angle_min, double scan_angle_max, double scan
       return;
     }
 
+    std::vector<record> records;
     for(int k=0; k<size; k++){
       for(int j=0; j<size; j++){
         if(check_intersection_rect_line(-int(size/2)+j, int(size/2)-k, -int(size/2)+j+1, int(size/2)-k-1, 0, 0, x, y)){
-          double distance = sqrt(pow(-int(size/2)+j, 2) + pow(int(size/2)-k, 2));
+          record r;
+          r.row = k;
+          r.col = j;
+          r.distance = sqrt(pow(-int(size/2)+j, 2) + pow(int(size/2)-k, 2));
+          records.push_back(r);
 
-	  std::string record = std::to_string(k) + "," + std::to_string(j) + "," + std::to_string(distance);
-          ofs << record.c_str() << "\n" << std::endl;
-
-          //img_e(k, j) = 255;
+	      //std::string record = std::to_string(k) + "," + std::to_string(j) + "," + std::to_string(distance);
+          //ofs << record.c_str() << "\n" << std::endl;
         }
       }
+    }
+    stable_sort(records.begin(), records.end(), &cust_predicate);
+
+    for(record r : records){
+	  std::string record = std::to_string(r.row) + "," + std::to_string(r.col) + "," + std::to_string(r.distance);
+      ofs << record.c_str() << "\n" << std::endl;
     }
    
     scan_index++;
