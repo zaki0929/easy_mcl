@@ -21,7 +21,9 @@
 #include <string>
 #include <algorithm>
 
-#define PRECASTING 1 // 1:true, 0: false
+#define BLUR_LOCAL_MAP 1    // 1: true, 0: false
+
+#define PRECASTING 1        // 1: true, 0: false
 #define SCAN_RANGE_MAX 5.6
 
 #define PARTICLE_NUM 200
@@ -244,10 +246,8 @@ inline void resampling(Particle p[], Particle p_temp[], Eigen::MatrixXd global_m
 
     // グレーゾーンにパーティクルがいってしまった場合引き戻す
     if(is_on_global_map(p_next[i], global_map, 0.05)){
-      ROS_INFO("next");
       p[i] = p_next[i];
     }else{
-      ROS_INFO("back");
       p[i] = p_temp[i];
     }
   }
@@ -342,7 +342,7 @@ inline void precasting(double scan_angle_min, double scan_angle_max, double scan
   ROS_INFO("precasting: finish");
 }
 
-inline Eigen::MatrixXd raycasting(int scan_index, double th, double range, Eigen::MatrixXd img_e, int size){
+inline Eigen::MatrixXd raycasting(int scan_index, double range, Eigen::MatrixXd img_e, int size){
   if(range > 0){
     double distance = range/0.05;
 
@@ -374,9 +374,6 @@ inline Eigen::MatrixXd raycasting(int scan_index, double th, double range, Eigen
           if(r.distance < distance){
             img_e(r.row, r.col) = 255;
           }else{
-            int x = int(distance*std::cos(th));
-            int y = int(distance*std::sin(th));
-            img_e(int(size/2)-y, int(size/2)+x) = 0;
             return img_e;
           }  
         }
@@ -508,28 +505,27 @@ Eigen::MatrixXd LocalMap::get_local_map(){
   Eigen::MatrixXd img_e = Eigen::MatrixXd::Ones(size, size)*205; 
 
   int scan_index = 0;
-  for(double th=scan->angle_min; th<=scan->angle_max; th+=scan->angle_increment){
-    img_e = raycasting(scan_index, th, scan->ranges[scan_index], img_e, size);
-    scan_index++;
-  }
   // レイキャスティング
-  int scan_index = 0;
+  scan_index = 0;
   for(double th=scan->angle_min; th<=scan->angle_max; th+=scan->angle_increment){
     img_e = raycasting(scan_index, scan->ranges[scan_index], img_e, size);
     scan_index++;
   }
   
   // センサ値のプロット
-  int scan_index = 0;
+  scan_index = 0;
   for(double th=scan->angle_min; th<=scan->angle_max; th+=scan->angle_increment){
-    double distance = scan->ranges[scan_index];
-    int x = int(distance*std::cos(th));
-    int y = int(distance*std::sin(th));
-    img_e(int(size/2)-y, int(size/2)+x) = 0;
+    if(scan->ranges[scan_index] > 0){
+      int x = int(scan->ranges[scan_index]*std::cos(th)/0.05);
+      int y = int(scan->ranges[scan_index]*std::sin(th)/0.05);
+      img_e(int(size/2)-y, int(size/2)+x) = 0;
+    }
     scan_index++;
   }
   
-  img_e = blur_map(img_e, 0, 0);
+  if(BLUR_LOCAL_MAP){
+    img_e = blur_map(img_e, 0, 0);
+  }
 
   ROS_INFO("raycasting: finish");
   ROS_INFO("local map: completed writing map");
@@ -624,7 +620,7 @@ Eigen::MatrixXd Particle::get_path_map(){
   int odom_x = odom_pose(0)/0.05;
   int odom_y = odom_pose(1)/0.05;
 
-  ROS_INFO("x: %d, y: %d, th: %lf", int(odom_x), int(odom_y), odom_pose(2));
+  //ROS_INFO("x: %d, y: %d, th: %lf", int(odom_x), int(odom_y), odom_pose(2));
   
   // 位置を描画
   path_map(int(size_y/2)-odom_y, int(size_x/2)+odom_x) = 0;
@@ -650,8 +646,8 @@ void Particle::init_pose(int y_px, int x_px, double th){
   double resolution = 0.05;
   double x = x_px*resolution; 
   double y = -y_px*resolution; 
-  ROS_INFO("y_px: %d, x_px: %d", y_px, x_px);
-  ROS_INFO("y: %lf, x: %lf", y, x);
+  //ROS_INFO("y_px: %d, x_px: %d", y_px, x_px);
+  //ROS_INFO("y: %lf, x: %lf", y, x);
 
   pose = set_pose(x, y, th);
   pose_initial = set_pose(x, y, th);
@@ -684,7 +680,7 @@ void Particle::get_global_map(Eigen::MatrixXd img_e){
   double x = pose(0)/resolution;
   double y = pose(1)/resolution;
 
-  ROS_INFO("y_px: %lf, x_px: %lf", -y, x);
+  //ROS_INFO("y_px: %lf, x_px: %lf", -y, x);
 
   Eigen::MatrixXd cut_img_e = Eigen::MatrixXd::Ones(size_l, size_l)*255; 
 
@@ -914,14 +910,16 @@ int main(int argc, char** argv){
     p_temp[i] = p[i];
   }
 
+  int precasting_toggle = 1;
   while(ros::ok()){
 
     if(n.scan_toggle){
       // scan トピックからローカルマップを生成
       lm.get_scan(n.scan);
 
-      if(PRECASTING){
+      if(PRECASTING && precasting_toggle){
         precasting(lm.scan->angle_min, lm.scan->angle_max, lm.scan->angle_increment);
+	precasting_toggle = 0;
       }
 
       //// ローカルマップを png 形式で出力
@@ -948,6 +946,7 @@ int main(int argc, char** argv){
       Eigen::MatrixXd local_map = lm.get_local_map();
 
       // パーティクルの重みつけを並列処理で行う
+      ROS_INFO("particle: calculating weight...");
       std::vector<std::thread> threads;
       for(int i=0; i<PARTICLE_NUM; i++){
         threads.emplace_back([i, &p, &local_map, &global_map](){
@@ -955,7 +954,7 @@ int main(int argc, char** argv){
           p[i].get_local_map(local_map);
           p[i].get_global_map(global_map);
           p[i].calc_weight();
-          ROS_INFO("%d: %d", i, p[i].weight);
+          //ROS_INFO("%d: %d", i, p[i].weight);
         });
       }
       for(auto& t : threads){
@@ -970,6 +969,7 @@ int main(int argc, char** argv){
       // 最も重みの大きいパーティクルをパブリッシュ
       n.publish_max_weight_particle(p);
 
+      ROS_INFO("particle: resamping...");
       resampling(p, p_temp, global_map);
       for(int i=0; i<PARTICLE_NUM; i++){
         p_temp[i] = p[i];
@@ -978,6 +978,7 @@ int main(int argc, char** argv){
       
     // パーティクルをパブリッシュ
     n.publish_particle_cloud(p);
+    ROS_INFO("particle: published");
 
     ros::spinOnce();
     rate.sleep();
