@@ -17,7 +17,8 @@
 #include <vector>
 #include <iostream>
 #include <fstream>
-#include <string.h>
+#include <sstream>
+#include <string>
 #include <algorithm>
 
 #define PRECASTING 1  //true
@@ -317,7 +318,7 @@ inline void precasting(double scan_angle_min, double scan_angle_max, double scan
       }
     }
     
-    // sort by distance
+    // 距離でソート 
     stable_sort(records.begin(), records.end(), &cust_predicate);
 
     for(record r : records){
@@ -450,26 +451,47 @@ Eigen::MatrixXd LocalMap::get_local_map(){
 
   for(double th=scan->angle_min, i=0; th<=scan->angle_max; th+=scan->angle_increment, i++){
     if(scan->ranges[i] > 0){
-      int x = int(scan->ranges[i]*std::cos(th)/0.05);
-      int y = int(scan->ranges[i]*std::sin(th)/0.05);
+      double distance = scan->ranges[i]/0.05;
 
-      img_e(int(size/2)-y, int(size/2)+x) = 0;
+      std::string file_location = homepath + "/catkin_ws/src/easy_mcl/resources/precasting/";
+      std::string file_name = std::to_string(i);
+      std::string file_format = ".csv";
+      std::string file_info = file_location + file_name + file_format;
 
-      if(int(i)%10 == 1){
-        for(int k=0; k<240; k++){
-          for(int j=0; j<240; j++){
-            //if(check_intersection_rect_line(j, i, j+1, i+1, int(size/2), int(size/2), int(size/2)+x, int(size/2)-y)){
-            ROS_INFO("%lf, %d, %d", i, k, j);
-            if(check_intersection_rect_line(-int(size/2)+j, int(size/2)-k, -int(size/2)+j+1, int(size/2)-k-1, 0, 0, x, y)){
-              img_e(k, j) = 255;
-            }
+      std::ifstream ifs(file_info.c_str());
+      if(!ifs){
+        ROS_INFO("raycasting: failed to open the csv");
+      }
+
+      ROS_INFO("raycasting: start");
+      std::string line; 
+      while(std::getline(ifs, line)){
+        int index = 0;
+        std::stringstream ss(line);
+        std::string data;
+        record r;
+        while(std::getline(ss, data, ',')){
+          switch(index){
+            case 0: r.row = std::stoi(data); break;
+            case 1: r.col = std::stoi(data); break;
+            case 2: r.distance = std::stod(data); break;
           }
+          index++;
+        }  
+
+        if(r.distance < distance){
+          img_e(r.row, r.col) = 255;
+        }else{
+          int x = int(distance*std::cos(th));
+          int y = int(distance*std::sin(th));
+          img_e(int(size/2)-y, int(size/2)+x) = 0;
+          ROS_INFO("raycasting: finish");
+          ROS_INFO("local map: completed writing map");
+          return img_e;
         }
       }
     }
   }
-  
-  ROS_INFO("local map: completed writing map");
   return img_e;
 }
 
