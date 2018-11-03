@@ -21,7 +21,7 @@
 #include <string>
 #include <algorithm>
 
-#define PRECASTING 0  //true
+#define PRECASTING 1 // 1:true, 0: false
 #define SCAN_RANGE_MAX 5.6
 
 #define PARTICLE_NUM 200
@@ -52,6 +52,7 @@ public:
   sensor_msgs::LaserScan::ConstPtr scan;
   void get_scan(sensor_msgs::LaserScan::ConstPtr _scan);
   Eigen::MatrixXd get_local_map();
+  Eigen::MatrixXd blur_map(Eigen::MatrixXd img_e, int target, int val);
   void export_map_image(Eigen::MatrixXd img_e);
   const int size;
 
@@ -177,6 +178,7 @@ inline int is_on_global_map(Particle p, Eigen::MatrixXd global_map, double resol
     return 0;
   }
 }
+
 
 inline void resampling(Particle p[], Particle p_temp[], Eigen::MatrixXd global_map){
   
@@ -511,9 +513,31 @@ Eigen::MatrixXd LocalMap::get_local_map(){
     scan_index++;
   }
 
+  img_e = blur_map(img_e, 0, 0);
+
   ROS_INFO("raycasting: finish");
   ROS_INFO("local map: completed writing map");
   return img_e;
+}
+
+Eigen::MatrixXd LocalMap::blur_map(Eigen::MatrixXd img_e, int target, int val){
+  Eigen::MatrixXd blur_img_e = img_e;
+  for(int i=1; i<img_e.rows()-1; i++){
+    for(int j=1; j<img_e.cols()-1; j++){
+      if(img_e(j, i) == target){
+        blur_img_e(j+1, i-1) = val;
+        blur_img_e(j+1, i) = val;
+        blur_img_e(j+1, i+1) = val;
+        blur_img_e(j, i-1) = val;
+        blur_img_e(j, i+1) = val;
+        blur_img_e(j-1, i-1) = val;
+        blur_img_e(j-1, i) = val;
+        blur_img_e(j-1, i+1) = val;
+      }
+    }
+  }
+  ROS_INFO("local map: blur");
+  return blur_img_e;
 }
 
 void LocalMap::export_map_image(Eigen::MatrixXd img_e){
