@@ -609,75 +609,92 @@ void Particle::init_pose(int y_px, int x_px, double th){
 }
 
 void Particle::get_local_map(Eigen::MatrixXd img_e){
-  int size = 240;
+  cv::Mat img;
+  cv::Mat rotated_img;
+  cv::eigen2cv(img_e, img);
 
-  std::vector<double> data_x;
-  std::vector<double> data_y;
-  std::vector<double> data2_x;
-  std::vector<double> data2_y;
+  float angle = pose(2)*180/M_PI;
+  float scale = 1.0;
+  Point2f center(img.cols/2.0, img.rows/2.0);
 
-  for(int j=0; j<size; j++){
-    for(int i=0; i<size; i++){
-      if(img_e(j, i) == 0){
-        data_x.push_back(i-(size/2)+0.5);
-        data_y.push_back((size/2)-j-0.5);
-      }
-      if(img_e(j, i) == 255){
-        data2_x.push_back(i-(size/2)+0.5);
-        data2_y.push_back((size/2)-j-0.5);
-      }
-    }
-  }
+  // アフィン変換行列の取得
+  cv::Mat affine = cv::getRotationMatrix2D(center, angle, scale);
+ 
+  warpAffine(img, rotated_img, affine, img.size());
 
-  std::vector<double> rotated_data_x;
-  std::vector<double> rotated_data_y;
-  std::vector<double> rotated_data2_x;
-  std::vector<double> rotated_data2_y;
+  cv::cv2eigen(rotated_img, img_e);
 
-  for(int i=0; i<data_x.size(); i++){
-    rotated_data_x.push_back((data_x[i]*std::cos(pose(2))) - (data_y[i]*std::sin(pose(2))));
-    rotated_data_y.push_back((data_x[i]*std::sin(pose(2))) + (data_y[i]*std::cos(pose(2))));
-  }
-  for(int i=0; i<data2_x.size(); i++){
-    rotated_data2_x.push_back((data2_x[i]*std::cos(pose(2))) - (data2_y[i]*std::sin(pose(2))));
-    rotated_data2_y.push_back((data2_x[i]*std::sin(pose(2))) + (data2_y[i]*std::cos(pose(2))));
-  }
+  local_map = img_e;
 
-  Eigen::MatrixXd rotated_img_e = Eigen::MatrixXd::Ones(size, size)*205;
+  //int size = 240;
 
-  for(int j=0; j<size; j++){
-    for(int i=0; i<size; i++){
-      int plot_toggle = 0;
-      for(int k=0; k<rotated_data2_x.size(); k++){
-        double x_point2 = rotated_data2_x[k] + (size/2);
-        double y_point2 = -rotated_data2_y[k] + (size/2);
-        if(check_point_within_rect(i, j, i+1, j+1, x_point2, y_point2)){
-          plot_toggle = 1;
-        }
-      }
-      if(plot_toggle){
-        rotated_img_e(j, i) = 255;
-      }
-    }
-  }
+  //std::vector<double> data_x;
+  //std::vector<double> data_y;
+  //std::vector<double> data2_x;
+  //std::vector<double> data2_y;
 
-  for(int j=0; j<size; j++){
-    for(int i=0; i<size; i++){
-      int plot_toggle = 0;
-      for(int k=0; k<rotated_data_x.size(); k++){
-        double x_point = rotated_data_x[k] + (size/2);
-        double y_point = -rotated_data_y[k] + (size/2);
-        if(check_point_within_rect(i, j, i+1, j+1, x_point, y_point)){
-          plot_toggle = 1;
-        }
-      }
-      if(plot_toggle){
-        rotated_img_e(j, i) = 0;
-      }
-    }
-  }
+  //for(int j=0; j<size; j++){
+  //  for(int i=0; i<size; i++){
+  //    if(img_e(j, i) == 0){
+  //      data_x.push_back(i-(size/2)+0.5);
+  //      data_y.push_back((size/2)-j-0.5);
+  //    }
+  //    if(img_e(j, i) == 255){
+  //      data2_x.push_back(i-(size/2)+0.5);
+  //      data2_y.push_back((size/2)-j-0.5);
+  //    }
+  //  }
+  //}
 
-  local_map = rotated_img_e;
+  //std::vector<double> rotated_data_x;
+  //std::vector<double> rotated_data_y;
+  //std::vector<double> rotated_data2_x;
+  //std::vector<double> rotated_data2_y;
+
+  //for(int i=0; i<data_x.size(); i++){
+  //  rotated_data_x.push_back((data_x[i]*std::cos(pose(2))) - (data_y[i]*std::sin(pose(2))));
+  //  rotated_data_y.push_back((data_x[i]*std::sin(pose(2))) + (data_y[i]*std::cos(pose(2))));
+  //}
+  //for(int i=0; i<data2_x.size(); i++){
+  //  rotated_data2_x.push_back((data2_x[i]*std::cos(pose(2))) - (data2_y[i]*std::sin(pose(2))));
+  //  rotated_data2_y.push_back((data2_x[i]*std::sin(pose(2))) + (data2_y[i]*std::cos(pose(2))));
+  //}
+
+  //Eigen::MatrixXd rotated_img_e = Eigen::MatrixXd::Ones(size, size)*205;
+
+  //for(int j=0; j<size; j++){
+  //  for(int i=0; i<size; i++){
+  //    int plot_toggle = 0;
+  //    for(int k=0; k<rotated_data2_x.size(); k++){
+  //      double x_point2 = rotated_data2_x[k] + (size/2);
+  //      double y_point2 = -rotated_data2_y[k] + (size/2);
+  //      if(check_point_within_rect(i, j, i+1, j+1, x_point2, y_point2)){
+  //        plot_toggle = 1;
+  //      }
+  //    }
+  //    if(plot_toggle){
+  //      rotated_img_e(j, i) = 255;
+  //    }
+  //  }
+  //}
+
+  //for(int j=0; j<size; j++){
+  //  for(int i=0; i<size; i++){
+  //    int plot_toggle = 0;
+  //    for(int k=0; k<rotated_data_x.size(); k++){
+  //      double x_point = rotated_data_x[k] + (size/2);
+  //      double y_point = -rotated_data_y[k] + (size/2);
+  //      if(check_point_within_rect(i, j, i+1, j+1, x_point, y_point)){
+  //        plot_toggle = 1;
+  //      }
+  //    }
+  //    if(plot_toggle){
+  //      rotated_img_e(j, i) = 0;
+  //    }
+  //  }
+  //}
+
+  //local_map = rotated_img_e;
 }
 
 void Particle::get_global_map(Eigen::MatrixXd img_e){
