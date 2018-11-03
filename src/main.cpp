@@ -613,9 +613,10 @@ void Particle::get_local_map(Eigen::MatrixXd img_e){
   cv::Mat rotated_img;
   cv::eigen2cv(img_e, img);
 
-  float angle = pose(2)*180/M_PI;
+  //float angle = pose(2)*180/M_PI;
+  float angle = 0;
   float scale = 1.0;
-  Point2f center(img.cols/2.0, img.rows/2.0);
+  cv::Point2f center(img.cols/2.0, img.rows/2.0);
 
   // アフィン変換行列の取得
   cv::Mat affine = cv::getRotationMatrix2D(center, angle, scale);
@@ -652,12 +653,16 @@ void Particle::get_local_map(Eigen::MatrixXd img_e){
   //std::vector<double> rotated_data2_y;
 
   //for(int i=0; i<data_x.size(); i++){
-  //  rotated_data_x.push_back((data_x[i]*std::cos(pose(2))) - (data_y[i]*std::sin(pose(2))));
-  //  rotated_data_y.push_back((data_x[i]*std::sin(pose(2))) + (data_y[i]*std::cos(pose(2))));
+  //  //rotated_data_x.push_back((data_x[i]*std::cos(pose(2))) - (data_y[i]*std::sin(pose(2))));
+  //  //rotated_data_y.push_back((data_x[i]*std::sin(pose(2))) + (data_y[i]*std::cos(pose(2))));
+  //  rotated_data_x.push_back((data_x[i]*std::cos(0)) - (data_y[i]*std::sin(0)));
+  //  rotated_data_y.push_back((data_x[i]*std::sin(0)) + (data_y[i]*std::cos(0)));
   //}
   //for(int i=0; i<data2_x.size(); i++){
-  //  rotated_data2_x.push_back((data2_x[i]*std::cos(pose(2))) - (data2_y[i]*std::sin(pose(2))));
-  //  rotated_data2_y.push_back((data2_x[i]*std::sin(pose(2))) + (data2_y[i]*std::cos(pose(2))));
+  //  //rotated_data2_x.push_back((data2_x[i]*std::cos(pose(2))) - (data2_y[i]*std::sin(pose(2))));
+  //  //rotated_data2_y.push_back((data2_x[i]*std::sin(pose(2))) + (data2_y[i]*std::cos(pose(2))));
+  //  rotated_data2_x.push_back((data2_x[i]*std::cos(0)) - (data2_y[i]*std::sin(0)));
+  //  rotated_data2_y.push_back((data2_x[i]*std::sin(0)) + (data2_y[i]*std::cos(0)));
   //}
 
   //Eigen::MatrixXd rotated_img_e = Eigen::MatrixXd::Ones(size, size)*205;
