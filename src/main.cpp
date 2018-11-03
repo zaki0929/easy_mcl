@@ -512,7 +512,23 @@ Eigen::MatrixXd LocalMap::get_local_map(){
     img_e = raycasting(scan_index, th, scan->ranges[scan_index], img_e, size);
     scan_index++;
   }
-
+  // レイキャスティング
+  int scan_index = 0;
+  for(double th=scan->angle_min; th<=scan->angle_max; th+=scan->angle_increment){
+    img_e = raycasting(scan_index, scan->ranges[scan_index], img_e, size);
+    scan_index++;
+  }
+  
+  // センサ値のプロット
+  int scan_index = 0;
+  for(double th=scan->angle_min; th<=scan->angle_max; th+=scan->angle_increment){
+    double distance = scan->ranges[scan_index];
+    int x = int(distance*std::cos(th));
+    int y = int(distance*std::sin(th));
+    img_e(int(size/2)-y, int(size/2)+x) = 0;
+    scan_index++;
+  }
+  
   img_e = blur_map(img_e, 0, 0);
 
   ROS_INFO("raycasting: finish");
