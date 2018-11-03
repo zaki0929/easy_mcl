@@ -15,6 +15,14 @@
 #include <random>
 #include <thread>
 #include <vector>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <algorithm>
+
+#define PRECASTING 1 // 1:true, 0: false
+#define SCAN_RANGE_MAX 5.6
 
 #define PARTICLE_NUM 200
 #define RATE_OF_RANDOM_PARTICLE 0.1 
@@ -44,6 +52,7 @@ public:
   sensor_msgs::LaserScan::ConstPtr scan;
   void get_scan(sensor_msgs::LaserScan::ConstPtr _scan);
   Eigen::MatrixXd get_local_map();
+  Eigen::MatrixXd blur_map(Eigen::MatrixXd img_e, int target, int val);
   void export_map_image(Eigen::MatrixXd img_e);
   const int size;
 
@@ -108,8 +117,46 @@ inline Eigen::Vector3d set_pose(double x, double y, double th){
   return vec;
 }
 
+// 2本の線分が交わるかどうかを判定する関数
+inline int check_intersection(int ax, int ay, int bx, int by, int cx, int cy, int dx, int dy){
+  double ta = (cx - dx) * (ay - cy) + (cy - dy) * (cx - ax);
+  double tb = (cx - dx) * (by - cy) + (cy - dy) * (cx - bx);
+  double tc = (ax - bx) * (cy - ay) + (ay - by) * (ax - cx);
+  double td = (ax - bx) * (dy - ay) + (ay - by) * (ax - dx);
+
+  if(tc * td <= 0 && ta * tb <= 0){
+    if((ay - by) * (cx - dx) == (cy - dy) * (ax - bx)){
+      return 0;
+    }else{
+      return 1;
+    }
+  }else{
+    return 0;
+  }
+}
+
+// 矩形と線分が交わるかどうかを判定する関数
+inline int check_intersection_rect_line(int x1, int y1, int x2, int y2, int ax, int ay, int bx, int by){
+  if(check_intersection(x1, y1, x1, y2, ax, ay, bx, by) || check_intersection(x1, y2, x2, y2, ax, ay, bx, by) || check_intersection(x2, y2, x2, y1, ax, ay, bx, by) || check_intersection(x2, y1, x1, y1, ax, ay, bx, by)){
+    return 1;
+  }else{
+    return 0;
+  }
+}
+
+
+// 点の座標が矩形の中にあるか判断する関数
 inline int check_point_within_rect(int x1, int y1, int x2, int y2, double x, double y){
   if(x >= (double)x1 && x <= (double)x2 && y >= (double)y1 && y <= (double)y2){
+    return 1;
+  }else{
+    return 0;
+  }
+}
+
+// 点の座標が円の中にあるか判断する関数
+inline int check_point_within_circle(int x, int y, double r){
+  if(pow(x, 2) + pow(y, 2) < pow(r, 2)){
     return 1;
   }else{
     return 0;
@@ -131,6 +178,7 @@ inline int is_on_global_map(Particle p, Eigen::MatrixXd global_map, double resol
     return 0;
   }
 }
+
 
 inline void resampling(Particle p[], Particle p_temp[], Eigen::MatrixXd global_map){
   
@@ -233,6 +281,113 @@ inline Particle debug_max_weight_particle(Particle p[]){
   }
   return max_weight_particle;
 }
+
+struct record{
+  int row;
+  int col;
+  double distance;
+};
+
+inline bool cust_predicate(record elem1, record elem2){
+  if(elem1.distance < elem2.distance){
+    return true;
+  }else{
+    return false;
+  }
+}
+
+inline void precasting(double scan_angle_min, double scan_angle_max, double scan_angle_increment){
+  ROS_INFO("precasting: start");
+  const int size = 240;
+  int scan_index=0;
+  for(double th=scan_angle_min; th<=scan_angle_max; th+=scan_angle_increment){
+    int x = int(SCAN_RANGE_MAX*std::cos(th)/0.05);
+    int y = int(SCAN_RANGE_MAX*std::sin(th)/0.05);
+
+    std::string homepath = std::getenv("HOME");
+    std::string file_location = homepath + "/catkin_ws/src/easy_mcl/resources/precasting/";
+    std::string file_name = std::to_string(scan_index);
+    std::string file_format = ".csv";
+    std::string file_info = file_location + file_name + file_format;
+
+    std::ofstream ofs(file_info.c_str());
+    if(!ofs){
+      ROS_INFO("precasting: failed");
+      return;
+    }
+
+    std::vector<record> records;
+    for(int k=0; k<size; k++){
+      for(int j=0; j<size; j++){
+        if(check_intersection_rect_line(-int(size/2)+j, int(size/2)-k, -int(size/2)+j+1, int(size/2)-k-1, 0, 0, x, y)){
+          record r;
+          r.row = k;
+          r.col = j;
+          r.distance = sqrt(pow(-int(size/2)+j, 2) + pow(int(size/2)-k, 2));
+          records.push_back(r);
+        }
+      }
+    }
+    
+    // 距離でソート 
+    stable_sort(records.begin(), records.end(), &cust_predicate);
+
+    for(record r : records){
+      std::string record_str = std::to_string(r.row) + "," + std::to_string(r.col) + "," + std::to_string(r.distance);
+      ofs << record_str.c_str() << std::endl;
+    }
+   
+    scan_index++;
+  }
+  ROS_INFO("precasting: finish");
+}
+
+inline Eigen::MatrixXd raycasting(int scan_index, double th, double range, Eigen::MatrixXd img_e, int size){
+  if(range > 0){
+    double distance = range/0.05;
+
+    std::string homepath = std::getenv("HOME");
+    std::string file_location = homepath + "/catkin_ws/src/easy_mcl/resources/precasting/";
+    std::string file_name = std::to_string(scan_index);
+    std::string file_format = ".csv";
+    std::string file_info = file_location + file_name + file_format;
+
+    std::ifstream ifs(file_info.c_str());
+    if(!ifs){
+      ROS_INFO("raycasting: failed to open the csv");
+    }
+
+    std::string line; 
+    while(std::getline(ifs, line)){
+      int index = 0;
+      std::stringstream ss(line);
+      std::string data;
+      record r;
+      while(std::getline(ss, data, ',')){
+        switch(index){
+          case 0: r.row = std::stoi(data); break;
+          case 1: r.col = std::stoi(data); break;
+          case 2: r.distance = std::stod(data); break;
+        }
+
+        if(index == 2){
+          if(r.distance < distance){
+            img_e(r.row, r.col) = 255;
+          }else{
+            int x = int(distance*std::cos(th));
+            int y = int(distance*std::sin(th));
+            img_e(int(size/2)-y, int(size/2)+x) = 0;
+            return img_e;
+          }  
+        }
+
+        index++;
+      }
+    }
+  }
+  return img_e;
+}
+
 //----------------------------------------------------------------------
 
 GlobalMap::GlobalMap(){
@@ -347,20 +502,42 @@ void LocalMap::get_scan(sensor_msgs::LaserScan::ConstPtr _scan){
 }
 
 Eigen::MatrixXd LocalMap::get_local_map(){
-  // 全ての要素の値が255でローカルマップサイズの行列を取得
-  Eigen::MatrixXd img_e = Eigen::MatrixXd::Ones(size, size)*255; 
+  ROS_INFO("raycasting: start");
 
-  for(double th=scan->angle_min, i=0; th<=scan->angle_max; th+=scan->angle_increment, i++){
-    if(scan->ranges[i] > 0){
-      int x = int(scan->ranges[i]*std::cos(th)/0.05);
-      int y = int(scan->ranges[i]*std::sin(th)/0.05);
+  // 全ての要素の値が205でローカルマップサイズの行列を取得
+  Eigen::MatrixXd img_e = Eigen::MatrixXd::Ones(size, size)*205; 
 
-      img_e(int(size/2)-y, int(size/2)+x) = 0;
-    }
+  int scan_index = 0;
+  for(double th=scan->angle_min; th<=scan->angle_max; th+=scan->angle_increment){
+    img_e = raycasting(scan_index, th, scan->ranges[scan_index], img_e, size);
+    scan_index++;
   }
-  
+
+  img_e = blur_map(img_e, 0, 0);
+
+  ROS_INFO("raycasting: finish");
   ROS_INFO("local map: completed writing map");
   return img_e;
+}
+
+Eigen::MatrixXd LocalMap::blur_map(Eigen::MatrixXd img_e, int target, int val){
+  Eigen::MatrixXd blur_img_e = img_e;
+  for(int i=1; i<img_e.rows()-1; i++){
+    for(int j=1; j<img_e.cols()-1; j++){
+      if(img_e(j, i) == target){
+        blur_img_e(j+1, i-1) = val;
+        blur_img_e(j+1, i) = val;
+        blur_img_e(j+1, i+1) = val;
+        blur_img_e(j, i-1) = val;
+        blur_img_e(j, i+1) = val;
+        blur_img_e(j-1, i-1) = val;
+        blur_img_e(j-1, i) = val;
+        blur_img_e(j-1, i+1) = val;
+      }
+    }
+  }
+  ROS_INFO("local map: blur");
+  return blur_img_e;
 }
 
 void LocalMap::export_map_image(Eigen::MatrixXd img_e){
@@ -465,47 +642,22 @@ void Particle::init_pose(int y_px, int x_px, double th){
 }
 
 void Particle::get_local_map(Eigen::MatrixXd img_e){
-  int size = 240;
+  cv::Mat img;
+  cv::Mat rotated_img;
+  cv::eigen2cv(img_e, img);
 
-  std::vector<double> data_x;
-  std::vector<double> data_y;
+  float angle = pose(2)*180/M_PI;
+  float scale = 1.0;
+  cv::Point2f center(img.cols/2.0, img.rows/2.0);
 
-  for(int j=0; j<size; j++){
-    for(int i=0; i<size; i++){
-      if(img_e(j, i) == 0){
-        data_x.push_back(i-(size/2)+0.5);
-        data_y.push_back((size/2)-j-0.5);
-      }
-    }
-  }
+  // アフィン変換行列の取得
+  cv::Mat affine = cv::getRotationMatrix2D(center, angle, scale);
+ 
+  warpAffine(img, rotated_img, affine, img.size());
 
-  std::vector<double> rotated_data_x;
-  std::vector<double> rotated_data_y;
+  cv::cv2eigen(rotated_img, img_e);
 
-  for(int i=0; i<data_x.size(); i++){
-    rotated_data_x.push_back((data_x[i]*std::cos(pose(2))) - (data_y[i]*std::sin(pose(2))));
-    rotated_data_y.push_back((data_x[i]*std::sin(pose(2))) + (data_y[i]*std::cos(pose(2))));
-  }
-
-  Eigen::MatrixXd rotated_img_e = Eigen::MatrixXd::Ones(size, size)*255; 
-
-  for(int j=0; j<size; j++){
-    for(int i=0; i<size; i++){
-      int plot_toggle = 0;
-      for(int k=0; k<rotated_data_x.size(); k++){
-        double x_point = rotated_data_x[k] + (size/2);
-        double y_point = -rotated_data_y[k] + (size/2);
-        if(check_point_within_rect(i, j, i+1, j+1, x_point, y_point)){
-          plot_toggle = 1;
-        }
-      }
-      if(plot_toggle){
-        rotated_img_e(j, i) = 0;
-      }
-    }
-  }
-
-  local_map = rotated_img_e;
+  local_map = img_e;
 }
 
 void Particle::get_global_map(Eigen::MatrixXd img_e){
@@ -567,40 +719,46 @@ void Particle::get_global_map(Eigen::MatrixXd img_e){
 
 void Particle::calc_weight(){
   weight = 0;
+  int size = local_map.cols();
   for(int j=0; j<local_map.cols(); j++){
     for(int i=0; i<local_map.rows(); i++){
-      if(local_map(j, i) == 0 && global_map(j, i) == 0){
-        weight += 22;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 20){
-        weight += 20;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 40){
-        weight += 18;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 60){
-        weight += 16;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 80){
-        weight += 14;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 100){
-        weight += 12;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 120){
-        weight += 10;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 140){
-        weight += 8;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 160){
-        weight += 6;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 180){
-        weight += 4;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 200){
-        weight += 2;
+      if(check_point_within_circle(-int(size/2)+i, int(size/2)-j, int(size/2))){ 
+        if(local_map(j, i) == 0 && global_map(j, i) == 0){
+          weight += 100;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 20){
+          weight += 90;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 40){
+          weight += 80;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 60){
+          weight += 70;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 80){
+          weight += 60;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 100){
+          weight += 50;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 120){
+          weight += 40;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 140){
+          weight += 30;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 160){
+          weight += 20;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 180){
+          weight += 10;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 200){
+          weight += 5;
+        }
+        if(local_map(j, i) == 255 && global_map(j, i) == 255){
+          weight += 1;
+        }
       }
     }
   }
@@ -745,6 +903,10 @@ int main(int argc, char** argv){
     if(n.scan_toggle){
       // scan トピックからローカルマップを生成
       lm.get_scan(n.scan);
+
+      if(PRECASTING){
+        precasting(lm.scan->angle_min, lm.scan->angle_max, lm.scan->angle_increment);
+      }
 
       //// ローカルマップを png 形式で出力
       //lm.export_map_image(local_map);
