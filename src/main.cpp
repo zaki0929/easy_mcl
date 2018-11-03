@@ -331,6 +331,52 @@ inline void precasting(double scan_angle_min, double scan_angle_max, double scan
   ROS_INFO("precasting: finish");
 }
 
+inline Eigen::MatrixXd raycasting(int scan_index, double th, double range, Eigen::MatrixXd img_e, int size){
+  if(range > 0){
+    double distance = range/0.05;
+
+    std::string homepath = std::getenv("HOME");
+    std::string file_location = homepath + "/catkin_ws/src/easy_mcl/resources/precasting/";
+    std::string file_name = std::to_string(scan_index);
+    std::string file_format = ".csv";
+    std::string file_info = file_location + file_name + file_format;
+
+    std::ifstream ifs(file_info.c_str());
+    if(!ifs){
+      ROS_INFO("raycasting: failed to open the csv");
+    }
+
+    std::string line; 
+    while(std::getline(ifs, line)){
+      int index = 0;
+      std::stringstream ss(line);
+      std::string data;
+      record r;
+      while(std::getline(ss, data, ',')){
+        switch(index){
+          case 0: r.row = std::stoi(data); break;
+          case 1: r.col = std::stoi(data); break;
+          case 2: r.distance = std::stod(data); break;
+        }
+
+        if(index == 2){
+          if(r.distance < distance){
+            img_e(r.row, r.col) = 255;
+          }else{
+            int x = int(distance*std::cos(th));
+            int y = int(distance*std::sin(th));
+            img_e(int(size/2)-y, int(size/2)+x) = 0;
+            return img_e;
+          }  
+        }
+
+        index++;
+      }
+    }
+  }
+  return img_e;
+}
+
 //----------------------------------------------------------------------
 
 GlobalMap::GlobalMap(){
@@ -445,53 +491,19 @@ void LocalMap::get_scan(sensor_msgs::LaserScan::ConstPtr _scan){
 }
 
 Eigen::MatrixXd LocalMap::get_local_map(){
-  // 全ての要素の値が255でローカルマップサイズの行列を取得
-  //Eigen::MatrixXd img_e = Eigen::MatrixXd::Ones(size, size)*255; 
+  ROS_INFO("raycasting: start");
+
+  // 全ての要素の値が205でローカルマップサイズの行列を取得
   Eigen::MatrixXd img_e = Eigen::MatrixXd::Ones(size, size)*205; 
 
-  for(double th=scan->angle_min, i=0; th<=scan->angle_max; th+=scan->angle_increment, i++){
-    if(scan->ranges[i] > 0){
-      double distance = scan->ranges[i]/0.05;
-
-      std::string file_location = homepath + "/catkin_ws/src/easy_mcl/resources/precasting/";
-      std::string file_name = std::to_string(i);
-      std::string file_format = ".csv";
-      std::string file_info = file_location + file_name + file_format;
-
-      std::ifstream ifs(file_info.c_str());
-      if(!ifs){
-        ROS_INFO("raycasting: failed to open the csv");
-      }
-
-      ROS_INFO("raycasting: start");
-      std::string line; 
-      while(std::getline(ifs, line)){
-        int index = 0;
-        std::stringstream ss(line);
-        std::string data;
-        record r;
-        while(std::getline(ss, data, ',')){
-          switch(index){
-            case 0: r.row = std::stoi(data); break;
-            case 1: r.col = std::stoi(data); break;
-            case 2: r.distance = std::stod(data); break;
-          }
-          index++;
-        }  
-
-        if(r.distance < distance){
-          img_e(r.row, r.col) = 255;
-        }else{
-          int x = int(distance*std::cos(th));
-          int y = int(distance*std::sin(th));
-          img_e(int(size/2)-y, int(size/2)+x) = 0;
-          ROS_INFO("raycasting: finish");
-          ROS_INFO("local map: completed writing map");
-          return img_e;
-        }
-      }
-    }
+  int scan_index = 0;
+  for(double th=scan->angle_min; th<=scan->angle_max; th+=scan->angle_increment){
+    img_e = raycasting(scan_index, th, scan->ranges[scan_index], img_e, size);
+    scan_index++;
   }
+
+  ROS_INFO("raycasting: finish");
+  ROS_INFO("local map: completed writing map");
   return img_e;
 }
 
@@ -631,29 +643,33 @@ void Particle::get_local_map(Eigen::MatrixXd img_e){
     rotated_data2_y.push_back((data2_x[i]*std::sin(pose(2))) + (data2_y[i]*std::cos(pose(2))));
   }
 
-  //Eigen::MatrixXd rotated_img_e = Eigen::MatrixXd::Ones(size, size)*255; 
   Eigen::MatrixXd rotated_img_e = Eigen::MatrixXd::Ones(size, size)*205;
 
   for(int j=0; j<size; j++){
     for(int i=0; i<size; i++){
       int plot_toggle = 0;
-      int plot_toggle2 = 0;
+      for(int k=0; k<rotated_data2_x.size(); k++){
+        double x_point2 = rotated_data2_x[k] + (size/2);
+        double y_point2 = -rotated_data2_y[k] + (size/2);
+        if(check_point_within_rect(i, j, i+1, j+1, x_point2, y_point2)){
+          plot_toggle = 1;
+        }
+      }
+      if(plot_toggle){
+        rotated_img_e(j, i) = 255;
+      }
+    }
+  }
+
+  for(int j=0; j<size; j++){
+    for(int i=0; i<size; i++){
+      int plot_toggle = 0;
       for(int k=0; k<rotated_data_x.size(); k++){
         double x_point = rotated_data_x[k] + (size/2);
         double y_point = -rotated_data_y[k] + (size/2);
         if(check_point_within_rect(i, j, i+1, j+1, x_point, y_point)){
           plot_toggle = 1;
         }
-      }
-      for(int k=0; k<rotated_data2_x.size(); k++){
-        double x_point2 = rotated_data2_x[k] + (size/2);
-        double y_point2 = -rotated_data2_y[k] + (size/2);
-        if(check_point_within_rect(i, j, i+1, j+1, x_point2, y_point2)){
-          plot_toggle2 = 1;
-        }
-      }
-      if(plot_toggle2){
-        rotated_img_e(j, i) = 255;
       }
       if(plot_toggle){
         rotated_img_e(j, i) = 0;
