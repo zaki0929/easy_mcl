@@ -21,7 +21,7 @@
 #include <string>
 #include <algorithm>
 
-#define PRECASTING 1  //true
+#define PRECASTING 0  //true
 #define SCAN_RANGE_MAX 5.6
 
 #define PARTICLE_NUM 200
@@ -147,6 +147,15 @@ inline int check_intersection_rect_line(int x1, int y1, int x2, int y2, int ax, 
 // 点の座標が矩形の中にあるか判断する関数
 inline int check_point_within_rect(int x1, int y1, int x2, int y2, double x, double y){
   if(x >= (double)x1 && x <= (double)x2 && y >= (double)y1 && y <= (double)y2){
+    return 1;
+  }else{
+    return 0;
+  }
+}
+
+// 点の座標が円の中にあるか判断する関数
+inline int check_point_within_circle(int x, int y, double r){
+  if(pow(x, 2) + pow(y, 2) < pow(r, 2)){
     return 1;
   }else{
     return 0;
@@ -686,40 +695,46 @@ void Particle::get_global_map(Eigen::MatrixXd img_e){
 
 void Particle::calc_weight(){
   weight = 0;
+  int size = local_map.cols();
   for(int j=0; j<local_map.cols(); j++){
     for(int i=0; i<local_map.rows(); i++){
-      if(local_map(j, i) == 0 && global_map(j, i) == 0){
-        weight += 22;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 20){
-        weight += 20;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 40){
-        weight += 18;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 60){
-        weight += 16;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 80){
-        weight += 14;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 100){
-        weight += 12;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 120){
-        weight += 10;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 140){
-        weight += 8;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 160){
-        weight += 6;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 180){
-        weight += 4;
-      }
-      if(local_map(j, i) == 0 && global_map(j, i) == 200){
-        weight += 2;
+      if(check_point_within_circle(-int(size/2)+i, int(size/2)-j, int(size/2))){ 
+        if(local_map(j, i) == 0 && global_map(j, i) == 0){
+          weight += 100;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 20){
+          weight += 90;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 40){
+          weight += 80;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 60){
+          weight += 70;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 80){
+          weight += 60;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 100){
+          weight += 50;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 120){
+          weight += 40;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 140){
+          weight += 30;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 160){
+          weight += 20;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 180){
+          weight += 10;
+        }
+        if(local_map(j, i) == 0 && global_map(j, i) == 200){
+          weight += 5;
+        }
+        if(local_map(j, i) == 255 && global_map(j, i) == 255){
+          weight += 1;
+        }
       }
     }
   }
