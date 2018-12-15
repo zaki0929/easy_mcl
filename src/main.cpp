@@ -21,13 +21,15 @@
 #include <string>
 #include <algorithm>
 
-#define BLUR_LOCAL_MAP 1    // 1: true, 0: false
+#define BLUR_LOCAL_MAP 1                      // 1: true, 0: false
 
-#define PRECASTING 1        // 1: true, 0: false
+#define PRECASTING 1                          // 1: true, 0: false
 #define SCAN_RANGE_MAX 5.6
 
-#define PARTICLE_NUM 200
-#define RATE_OF_RANDOM_PARTICLE 0.1 
+#define USE_WHITE_GRID_TO_CALCULATE_WEIGHT 0  // 1: true, 0: false
+
+#define PARTICLE_NUM 300
+#define RATE_OF_RANDOM_PARTICLE 0.1
 
 #define RANGE_X1 970
 #define RANGE_Y1 850
@@ -736,41 +738,55 @@ void Particle::calc_weight(){
     for(int i=0; i<local_map.rows(); i++){
       if(check_point_within_circle(-int(size/2)+i, int(size/2)-j, int(size/2))){ 
         if(local_map(j, i) == 0 && global_map(j, i) == 0){
-          weight += 100;
+          weight += 1000;
         }
         if(local_map(j, i) == 0 && global_map(j, i) == 20){
-          weight += 90;
+          weight += 900;
         }
         if(local_map(j, i) == 0 && global_map(j, i) == 40){
-          weight += 80;
+          weight += 800;
         }
         if(local_map(j, i) == 0 && global_map(j, i) == 60){
-          weight += 70;
+          weight += 700;
         }
         if(local_map(j, i) == 0 && global_map(j, i) == 80){
-          weight += 60;
+          weight += 600;
         }
         if(local_map(j, i) == 0 && global_map(j, i) == 100){
-          weight += 50;
+          weight += 500;
         }
         if(local_map(j, i) == 0 && global_map(j, i) == 120){
-          weight += 40;
+          weight += 400;
         }
         if(local_map(j, i) == 0 && global_map(j, i) == 140){
-          weight += 30;
+          weight += 300;
         }
         if(local_map(j, i) == 0 && global_map(j, i) == 160){
-          weight += 20;
+          weight += 200;
         }
         if(local_map(j, i) == 0 && global_map(j, i) == 180){
-          weight += 10;
+          weight += 100;
         }
         if(local_map(j, i) == 0 && global_map(j, i) == 200){
-          weight += 5;
+          weight += 50;
         }
-        if(local_map(j, i) == 255 && global_map(j, i) == 255){
-          weight += 1;
-        }
+        if(local_map(j, i) == 0 && (global_map(j, i) == 205 || global_map(j, i) == 255)){
+	  if(weight > 100){
+            weight -= 1000;
+	  }else{
+	    weight = 0;
+	  }
+	}
+	if(USE_WHITE_GRID_TO_CALCULATE_WEIGHT){
+          if(local_map(j, i) == 255 && (global_map(j, i) == 255)){
+            weight += 10;
+          }
+          if(local_map(j, i) == 255 && global_map(j, i) == 205){
+	    if(weight > 1){
+              weight -= 10;
+	    }
+          }
+	}
       }
     }
   }
